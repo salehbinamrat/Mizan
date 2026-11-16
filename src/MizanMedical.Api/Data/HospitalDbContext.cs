@@ -26,6 +26,8 @@ public sealed class HospitalDbContext(DbContextOptions<HospitalDbContext> option
         builder.Entity<Department>().HasIndex(x => x.Code).IsUnique();
         builder.Entity<Department>().Property(x => x.Code).HasMaxLength(40);
         builder.Entity<Department>().Property(x => x.Name).HasMaxLength(150);
+        builder.Entity<Department>().Property(x => x.MaxActiveUsers).HasDefaultValue(20);
+        builder.Entity<Department>().ToTable(t => t.HasCheckConstraint("CK_Department_UserLimit", "\"MaxActiveUsers\" >= 1 AND \"MaxActiveUsers\" <= 10000"));
         builder.Entity<StaffUser>().HasOne<Department>().WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
         builder.Entity<UserPermission>().HasKey(x => new { x.StaffUserId, x.Key });
         builder.Entity<UserPermission>().HasOne(x => x.StaffUser).WithMany(x => x.Permissions).HasForeignKey(x => x.StaffUserId).OnDelete(DeleteBehavior.Cascade);
@@ -55,6 +57,9 @@ public sealed class HospitalDbContext(DbContextOptions<HospitalDbContext> option
         builder.Entity<MedicalService>().Property(x => x.Department).HasMaxLength(100);
         builder.Entity<MedicalService>().Property(x => x.Price).HasPrecision(20, 2);
         builder.Entity<CashDesk>().HasIndex(x => new { x.DepartmentId, x.Name }).IsUnique();
+        builder.Entity<CashDesk>().HasOne<StaffUser>().WithMany().HasForeignKey(x => x.OwnerUserId).OnDelete(DeleteBehavior.Restrict);
+        builder.Entity<CashDesk>().HasIndex(x => x.OwnerUserId).IsUnique()
+            .HasFilter("\"OwnerUserId\" IS NOT NULL AND \"IsActive\" = TRUE");
         builder.Entity<CashDesk>().Property(x => x.Name).HasMaxLength(80);
         builder.Entity<CashShift>().HasIndex(x => x.CashDeskId).IsUnique().HasFilter("\"ClosedAtUtc\" IS NULL");
         builder.Entity<CashShift>().HasIndex(x => x.CashierId);

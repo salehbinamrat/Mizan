@@ -13,6 +13,7 @@ public static class HospitalPermissions
     public const string ServicesManage = "services.manage";
     public const string DesksRead = "desks.read";
     public const string DesksManage = "desks.manage";
+    public const string DesksReadAll = "desks.read.all";
     public const string ShiftsRead = "shifts.read";
     public const string ShiftsOpen = "shifts.open";
     public const string ShiftsClose = "shifts.close";
@@ -25,7 +26,7 @@ public static class HospitalPermissions
 
     public static readonly IReadOnlyList<string> All = [
         DepartmentsManage, UsersManage, PatientsRead, PatientsCreate,
-        ServicesRead, ServicesManage, DesksRead, DesksManage,
+        ServicesRead, ServicesManage, DesksRead, DesksManage, DesksReadAll,
         ShiftsRead, ShiftsOpen, ShiftsClose, InvoicesRead,
         InvoicesIssue, ReceiptsCreate, ExpensesCreate, ReportsRead, AuditRead
     ];
@@ -33,7 +34,7 @@ public static class HospitalPermissions
     // Only the system owner manages accounts and departments; delegation would
     // require a separate audited, non-escalating grant flow.
     public static readonly IReadOnlySet<string> OwnerOnly = new HashSet<string>(
-        [UsersManage, DepartmentsManage], StringComparer.Ordinal);
+        [UsersManage, DepartmentsManage, DesksManage], StringComparer.Ordinal);
 }
 
 public static class AccessRules
