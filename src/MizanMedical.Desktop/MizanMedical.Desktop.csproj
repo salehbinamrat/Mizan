@@ -5,6 +5,10 @@
     <UseWPF>true</UseWPF>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>MizanMedical.Desktop</AssemblyName>
+    <ApplicationIcon>Assets\MizanMedical.ico</ApplicationIcon>
+    <Title>ميزان الطبي</Title>
+    <Product>ميزان الطبي</Product>
+    <Description>النظام المالي المركزي للمستشفى</Description>
     <RootNamespace>MizanMedical.Desktop</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
@@ -12,5 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="mizan-client.json" CopyToOutputDirectory="PreserveNewest" />
+    <Resource Include="Assets\MizanMedical.ico" />
+    <Resource Include="Assets\MizanMedical-UI.png" />
   </ItemGroup>
 </Project>
