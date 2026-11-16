@@ -10,7 +10,17 @@ function Assert-Startup([string] $executable, [string] $label) {
     $env:MIZAN_STARTUP_PROBE_FILE = $marker
     try {
         $proc = Start-Process -FilePath $executable -ArgumentList '--startup-smoke' -PassThru
-        if (!$proc.WaitForExit(30000)) {
+        if (!$proc.WaitForExit(45000)) {
+            if (Test-Path -LiteralPath $marker) {
+                Write-Output ("Startup smoke diagnostic: " + (Get-Content -Raw -LiteralPath $marker))
+            }
+            else {
+                Write-Output "Startup smoke never reached App.OnStartup for $label"
+            }
+            $log = Join-Path $env:LOCALAPPDATA 'MizanMedical\logs\startup.log'
+            if (Test-Path -LiteralPath $log) {
+                Get-Content -LiteralPath $log -Tail 20 | Write-Output
+            }
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             throw "Windows application startup hung: $label"
         }
@@ -19,7 +29,7 @@ function Assert-Startup([string] $executable, [string] $label) {
             throw "Windows application failed startup smoke: $label ExitCode=$($proc.ExitCode)"
         }
         if (!(Test-Path -LiteralPath $marker) -or
-            !((Get-Content -Raw -LiteralPath $marker).StartsWith('PASS:'))) {
+            !((Get-Content -Raw -LiteralPath $marker).Contains('PASS:'))) {
             throw "Windows application did not initialize its login window: $label"
         }
         Write-Output "PASS Windows startup: $label"

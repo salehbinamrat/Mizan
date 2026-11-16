@@ -43,22 +43,32 @@ public partial class App : Application
             // resources but never contacts PostgreSQL or requires a running API.
             StartupUri = null;
             ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            string? path = Environment.GetEnvironmentVariable("MIZAN_STARTUP_PROBE_FILE");
             try
             {
+                if (string.IsNullOrWhiteSpace(path))
+                    throw new InvalidOperationException("Missing startup probe output path.");
+                File.WriteAllText(path, "BEGIN: App.OnStartup reached.\n");
                 var client = Api;
+                File.AppendAllText(path, "CLIENT: HospitalApi initialized.\n");
                 var login = new LoginWindow();
                 if (login.FindName("ServerAddressText") is null ||
                     login.FindName("ServerSettingsButton") is null)
                     throw new InvalidOperationException("Login window controls are missing.");
-                string path = Environment.GetEnvironmentVariable("MIZAN_STARTUP_PROBE_FILE")
-                    ?? throw new InvalidOperationException("Missing startup probe output path.");
-                File.WriteAllText(path, "PASS: Mizan Medical WPF login XAML and client initialized.");
-                Shutdown(0);
+                File.AppendAllText(path, "PASS: Mizan Medical WPF login XAML initialized.\n");
+                // A headless CI process must terminate itself. Shutdown() is
+                // dispatcher-driven and can leave a WinExe alive in runner session 0.
+                Environment.Exit(0);
             }
             catch (Exception ex)
             {
                 StartupDiagnostics.Record("startup-smoke", ex);
-                Shutdown(1);
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    try { File.AppendAllText(path, "FAIL: " + ex.GetType().Name + "\n"); }
+                    catch { /* capture diagnostic if possible */ }
+                }
+                Environment.Exit(1);
             }
             return;
         }
