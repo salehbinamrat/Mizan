@@ -26,7 +26,7 @@ public sealed class HospitalDbContext(DbContextOptions<HospitalDbContext> option
         builder.Entity<HospitalIdentity>().HasKey(x => x.Id);
         builder.Entity<HospitalIdentity>().Property(x => x.Name).HasMaxLength(200).IsRequired();
         builder.Entity<HospitalIdentity>().ToTable(t => t.HasCheckConstraint(
-            "CK_HospitalIdentity_Singleton", "\\"Id\\" = 1"));
+            "CK_HospitalIdentity_Singleton", "\"Id\" = 1"));
         builder.Entity<StaffUser>().HasIndex(x => x.Username).IsUnique();
         builder.Entity<Department>().HasIndex(x => x.Code).IsUnique();
         builder.Entity<Department>().Property(x => x.Code).HasMaxLength(40);
