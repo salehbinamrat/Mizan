@@ -45,6 +45,9 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
     var setup = scope.ServiceProvider.GetRequiredService<InitialOwnerSetupState>();
     await db.Database.EnsureCreatedAsync();
+    // Fail closed before any staff/password queries if an existing database has
+    // not received its reviewed PostgreSQL schema upgrades.
+    await DatabaseSchemaCompatibilityGuard.EnsureCompatibleAsync(connectionString);
     bool anyOwner = await db.StaffUsers.AnyAsync(u => u.IsSystemOwner);
     if (!anyOwner)
     {
