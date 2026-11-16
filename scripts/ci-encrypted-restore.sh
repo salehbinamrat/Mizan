@@ -4,6 +4,7 @@ set -euo pipefail
 BASE="${MIZAN_TEST_URL:-http://127.0.0.1:5081}"
 : "${MIZAN_TEST_ADMIN_USERNAME:?}"
 : "${MIZAN_TEST_ADMIN_PASSWORD:?}"
+: "${MIZAN_TEST_HOSPITAL_NAME:?}"
 temp="$(mktemp -d)"
 chmod 700 "$temp"
 trap 'rm -rf "$temp"' EXIT
@@ -11,7 +12,7 @@ trap 'rm -rf "$temp"' EXIT
 ownerToken=$(curl --fail-with-body --silent --show-error \
   -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" \
   -d "$(jq -n --arg u "$MIZAN_TEST_ADMIN_USERNAME" --arg p "$MIZAN_TEST_ADMIN_PASSWORD" \
-  '{username:$u,password:$p}')" | jq -r .token)
+  --arg h "$MIZAN_TEST_HOSPITAL_NAME" '{username:$u,password:$p,hospitalName:$h}')" | jq -r .token)
 [[ ${#ownerToken} == 64 ]] || { echo 'Owner login failed for backup restore test'; exit 1; }
 export MIZAN_RESTORE_PASSPHRASE='ci-only-mizan-restore-passphrase-2026!'
 export MIZAN_RESTORE_CONFIRM='YES_DISPOSABLE'

@@ -9,6 +9,8 @@ public sealed class ServerEndpointRulesTests
     [InlineData("https://hospital.example:5081", "https://hospital.example:5081")]
     [InlineData(" https://HOSPITAL.example:5081/ ", "https://hospital.example:5081")]
     [InlineData("https://10.0.0.5:5081", "https://10.0.0.5:5081")]
+    [InlineData("https://192.168.10.22:5081", "https://192.168.10.22:5081")]
+    [InlineData("https://hospital.internal:5081", "https://hospital.internal:5081")]
     [InlineData("https://localhost:5081", "https://localhost:5081")]
     [InlineData("http://localhost:5081", "http://localhost:5081")]
     [InlineData("http://127.0.0.1:5081", "http://127.0.0.1:5081")]

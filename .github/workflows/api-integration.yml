@@ -43,6 +43,8 @@ jobs:
           MIZAN_DB_CONNECTION: Host=127.0.0.1;Port=5432;Database=mizan_ci;Username=mizan_ci;Password=ci-only-password
           MIZAN_BOOTSTRAP_USERNAME: testadmin
           MIZAN_BOOTSTRAP_PASSWORD: ci-test-password-12345!
+          MIZAN_BOOTSTRAP_HOSPITAL_NAME: Mizan Test Hospital
+          MIZAN_TEST_HOSPITAL_NAME: Mizan Test Hospital
           MIZAN_TEST_ADMIN_USERNAME: testadmin
           MIZAN_TEST_ADMIN_PASSWORD: ci-test-password-12345!
         run: |
