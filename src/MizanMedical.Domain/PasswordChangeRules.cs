@@ -4,8 +4,8 @@ public static class PasswordChangeRules
 {
     public static void Validate(string? currentPassword, string? newPassword, string? confirmation)
     {
-        if (string.IsNullOrWhiteSpace(currentPassword))
-            throw new DomainException("أدخل كلمة المرور الحالية.");
+        if (!PasswordSecurity.IsAcceptableLoginPassword(currentPassword))
+            throw new DomainException("كلمة المرور الحالية غير صالحة أو تتجاوز 128 حرفا.");
         if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length is < 12 or > 128)
             throw new DomainException("كلمة المرور الجديدة يجب أن تتكون من 12 إلى 128 حرفا.");
         if (!string.Equals(newPassword, confirmation, StringComparison.Ordinal))
