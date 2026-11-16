@@ -15,6 +15,9 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<InvoiceLineChoice> _draftLines = [];
     private bool _busy;
     private bool _landingSelected;
+    private int _patientsPage = 1;
+    private int _invoicesPage = 1;
+    private const int PageSize = 100;
     // Reuse the same request ID if the server commits but the network response is lost.
     private Guid _pendingInvoiceId = Guid.NewGuid();
     private Guid _pendingReceiptId = Guid.NewGuid();
@@ -84,11 +87,45 @@ public partial class MainWindow : Window
 
     private async Task RefreshAll()
     {
-        // The server is authoritative: reload permissions and assignment whenever data refreshes.
         await App.Api.RefreshSession();
         ApplyAccountPermissions();
         var account = App.Api.Staff ?? throw new InvalidOperationException("انتهت جلسة الدخول.");
-        var departments = await App.Api.Departments();
+
+        // Start authorized, independent reads at once to avoid cumulative LAN latency.
+        // Every endpoint still enforces its own staff permission and department scope.
+        var departmentsTask = App.Api.Departments();
+        Task<List<PatientDto>>? patientsTask = Has(HospitalPermissions.PatientsRead)
+            ? App.Api.Patients(PatientListSearchBox.Text, _patientsPage, PageSize) : null;
+        Task<List<PatientDto>>? invoicePatientsTask =
+            Has(HospitalPermissions.InvoicesIssue) && Has(HospitalPermissions.PatientsRead)
+            ? App.Api.Patients(InvoicePatientSearchBox.Text) : null;
+        Task<List<ServiceDto>>? servicesTask = Has(HospitalPermissions.ServicesRead)
+            ? App.Api.Services() : null;
+        Task<List<InvoiceDto>>? invoicesTask = Has(HospitalPermissions.InvoicesRead)
+            ? App.Api.Invoices(InvoiceListSearchBox.Text, _invoicesPage, PageSize) : null;
+        Task<List<InvoiceDto>>? receiptInvoicesTask =
+            Has(HospitalPermissions.ReceiptsCreate) && Has(HospitalPermissions.InvoicesRead)
+            ? App.Api.Invoices(ReceiptInvoiceSearchBox.Text) : null;
+        Task<List<CashDeskDto>>? desksTask = Has(HospitalPermissions.DesksRead)
+            ? App.Api.CashDesks() : null;
+        Task<List<CashShiftDto>>? shiftsTask = Has(HospitalPermissions.ShiftsRead)
+            ? App.Api.OpenShifts() : null;
+        Task<DailyReportDto>? reportTask = CanReport
+            ? App.Api.Daily(DateOnly.FromDateTime(ReportDate.SelectedDate ?? DateTime.Today))
+            : null;
+
+        var requests = new List<Task> { departmentsTask };
+        if (patientsTask is not null) requests.Add(patientsTask);
+        if (invoicePatientsTask is not null) requests.Add(invoicePatientsTask);
+        if (servicesTask is not null) requests.Add(servicesTask);
+        if (invoicesTask is not null) requests.Add(invoicesTask);
+        if (receiptInvoicesTask is not null) requests.Add(receiptInvoicesTask);
+        if (desksTask is not null) requests.Add(desksTask);
+        if (shiftsTask is not null) requests.Add(shiftsTask);
+        if (reportTask is not null) requests.Add(reportTask);
+        await Task.WhenAll(requests);
+
+        var departments = await departmentsTask;
         Guid? previouslySelected = ActiveDepartmentCombo.SelectedValue as Guid?;
         ActiveDepartmentCombo.ItemsSource = departments;
         bool globalScope = account.IsSystemOwner || account.AllDepartments;
@@ -97,27 +134,31 @@ public partial class MainWindow : Window
         ActiveDepartmentCombo.SelectedValue = globalScope
             ? (previouslySelected ?? (departments.Count == 1 ? departments[0].Id : Guid.Empty))
             : account.DepartmentId;
-        if (Has("patients.read"))
+
+        if (patientsTask is not null)
         {
-            var patients = await App.Api.Patients();
+            var patients = await patientsTask;
             PatientsGrid.ItemsSource = patients;
-            InvoicePatientCombo.ItemsSource = patients;
+            PatientPageLabel.Text = $"صفحة {_patientsPage}";
         }
-        if (Has("services.read"))
+        if (invoicePatientsTask is not null)
+            InvoicePatientCombo.ItemsSource = await invoicePatientsTask;
+        if (servicesTask is not null)
         {
-            var services = await App.Api.Services();
+            var services = await servicesTask;
             ServicesGrid.ItemsSource = services;
             InvoiceServiceCombo.ItemsSource = services;
         }
-        if (Has("invoices.read"))
+        if (invoicesTask is not null)
         {
-            var invoices = await App.Api.Invoices();
-            InvoicesGrid.ItemsSource = invoices;
-            ReceiptInvoiceCombo.ItemsSource = invoices.Where(i => i.Balance > 0m).ToList();
+            InvoicesGrid.ItemsSource = await invoicesTask;
+            InvoicePageLabel.Text = $"صفحة {_invoicesPage}";
         }
-        if (Has("desks.read"))
+        if (receiptInvoicesTask is not null)
+            ReceiptInvoiceCombo.ItemsSource = (await receiptInvoicesTask).Where(i => i.Balance > 0m).ToList();
+        if (desksTask is not null)
         {
-            OpenDeskCombo.ItemsSource = await App.Api.CashDesks();
+            OpenDeskCombo.ItemsSource = await desksTask;
             try
             {
                 var desk = await App.Api.MyCashDeskSummary();
@@ -128,16 +169,68 @@ public partial class MainWindow : Window
                 PersonalDeskSummaryText.Text = "لا يوجد صندوق شخصي لهذا الحساب؛ راجع مدير البرنامج.";
             }
         }
-        if (Has("shifts.read"))
+        if (shiftsTask is not null)
         {
-            var shifts = await App.Api.OpenShifts();
+            var shifts = await shiftsTask;
             CloseShiftCombo.ItemsSource = shifts;
             ReceiptShiftCombo.ItemsSource = shifts;
             ExpenseShiftCombo.ItemsSource = shifts;
         }
-        if (CanReport) await LoadReport();
+        if (reportTask is not null) DisplayReport(await reportTask);
         StatusLabel.Text = "تم تحديث البيانات وفق صلاحياتك ونطاق القسم المسموح.";
     }
+
+    private async Task LoadPatientsListPage()
+    {
+        var patients = await App.Api.Patients(PatientListSearchBox.Text, _patientsPage, PageSize);
+        if (_patientsPage > 1 && patients.Count == 0)
+        {
+            _patientsPage--;
+            patients = await App.Api.Patients(PatientListSearchBox.Text, _patientsPage, PageSize);
+        }
+        PatientsGrid.ItemsSource = patients;
+        PatientPageLabel.Text = $"صفحة {_patientsPage}";
+    }
+
+    private async Task LoadInvoicesListPage()
+    {
+        var invoices = await App.Api.Invoices(InvoiceListSearchBox.Text, _invoicesPage, PageSize);
+        if (_invoicesPage > 1 && invoices.Count == 0)
+        {
+            _invoicesPage--;
+            invoices = await App.Api.Invoices(InvoiceListSearchBox.Text, _invoicesPage, PageSize);
+        }
+        InvoicesGrid.ItemsSource = invoices;
+        InvoicePageLabel.Text = $"صفحة {_invoicesPage}";
+    }
+
+    private async void SearchPatients_Click(object sender, RoutedEventArgs e) =>
+        await Perform(async () => { _patientsPage = 1; await LoadPatientsListPage(); });
+    private async void NextPatients_Click(object sender, RoutedEventArgs e) =>
+        await Perform(async () => { _patientsPage++; await LoadPatientsListPage(); });
+    private async void PrevPatients_Click(object sender, RoutedEventArgs e) =>
+        await Perform(async () => { if (_patientsPage > 1) _patientsPage--; await LoadPatientsListPage(); });
+
+    private async void SearchInvoices_Click(object sender, RoutedEventArgs e) =>
+        await Perform(async () => { _invoicesPage = 1; await LoadInvoicesListPage(); });
+    private async void NextInvoices_Click(object sender, RoutedEventArgs e) =>
+        await Perform(async () => { _invoicesPage++; await LoadInvoicesListPage(); });
+    private async void PrevInvoices_Click(object sender, RoutedEventArgs e) =>
+        await Perform(async () => { if (_invoicesPage > 1) _invoicesPage--; await LoadInvoicesListPage(); });
+
+    private async void SearchInvoicePatients_Click(object sender, RoutedEventArgs e) =>
+        await Perform(async () =>
+        {
+            InvoicePatientCombo.ItemsSource = await App.Api.Patients(InvoicePatientSearchBox.Text);
+            StatusLabel.Text = "اختر المريض المطلوب من نتائج البحث.";
+        });
+    private async void SearchReceiptInvoices_Click(object sender, RoutedEventArgs e) =>
+        await Perform(async () =>
+        {
+            var invoices = await App.Api.Invoices(ReceiptInvoiceSearchBox.Text);
+            ReceiptInvoiceCombo.ItemsSource = invoices.Where(i => i.Balance > 0m).ToList();
+            StatusLabel.Text = "اختر الفاتورة المستحقة من نتائج البحث.";
+        });
 
     private Guid? SelectedDepartment() => ActiveDepartmentCombo.SelectedValue is Guid id && id != Guid.Empty ? id : null;
 
@@ -145,6 +238,11 @@ public partial class MainWindow : Window
     {
         var day = DateOnly.FromDateTime(ReportDate.SelectedDate ?? DateTime.Today);
         var report = await App.Api.Daily(day);
+        DisplayReport(report);
+    }
+
+    private void DisplayReport(DailyReportDto report)
+    {
         string currency = report.Currency;
         InvoicedLabel.Text = $"{report.InvoicedAmount:N2} {currency}";
         ReceivedLabel.Text = $"{report.CashReceived:N2} {currency}";
