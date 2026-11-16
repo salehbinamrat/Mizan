@@ -71,10 +71,15 @@ public sealed class ApplicationIconContractTests
     [InlineData("FirstRunWindow.xaml")]
     [InlineData("UsersWindow.xaml")]
     [InlineData("BackupWindow.xaml")]
-    public void Each_window_uses_the_branded_caption_icon(string file)
+    [InlineData("ChangePasswordWindow.xaml")]
+    [InlineData("ServerSettingsWindow.xaml")]
+    public void Every_window_inherits_the_executables_icon_instead_of_decoding_ico_resource(string file)
     {
+        // WPF's BitmapDecoder rejects the embedded .ico container on some Windows
+        // installations, throwing XamlParseException before the login is shown.
+        // Without Window.Icon, Windows uses the real PE ApplicationIcon instead.
         var xml = XDocument.Load(FileAt("src/MizanMedical.Desktop/" + file));
-        Assert.Equal("pack://application:,,,/Assets/MizanMedical.ico", (string?)xml.Root?.Attribute("Icon"));
+        Assert.Null(xml.Root?.Attribute("Icon"));
     }
 
     [Theory]

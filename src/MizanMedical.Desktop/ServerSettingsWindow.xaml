@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ميزان الطبي — إعداد الاتصال" Width="610" Height="438"
         MinWidth="580" MinHeight="410" WindowStartupLocation="CenterOwner"
-        Icon="pack://application:,,,/Assets/MizanMedical.ico"
+        
         FlowDirection="RightToLeft" Background="{StaticResource MedicalCanvas}">
     <Border Style="{StaticResource MedicalCard}" Margin="22" Padding="24">
         <StackPanel>
