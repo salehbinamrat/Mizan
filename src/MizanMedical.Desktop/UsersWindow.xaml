@@ -3,9 +3,9 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ميزان الطبي — الأقسام والمستخدمون والصلاحيات"
         Width="1170" Height="800" MinWidth="980" MinHeight="670"
-        WindowStartupLocation="CenterOwner" Background="#F1F5F8"
+        WindowStartupLocation="CenterOwner" Background="{StaticResource MedicalCanvas}"
         FlowDirection="RightToLeft" FontFamily="Segoe UI" Loaded="Window_Loaded">
-    <Grid Margin="18">
+    <Grid Margin="22">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
         <StackPanel Margin="0,0,0,15">
             <TextBlock Text="إدارة الأقسام والمستخدمين والصلاحيات" FontSize="23" FontWeight="Bold" Foreground="#173F53"/>
@@ -14,7 +14,7 @@
         </StackPanel>
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions><ColumnDefinition Width="2*"/><ColumnDefinition Width="3*"/></Grid.ColumnDefinitions>
-            <Border Grid.Column="0" Background="White" CornerRadius="12" Padding="13" Margin="0,0,10,0">
+            <Border Grid.Column="0" Style="{StaticResource MedicalCard}" Padding="17" Margin="0,0,10,0">
                 <DockPanel>
                     <StackPanel DockPanel.Dock="Top" Margin="0,0,0,12">
                         <TextBlock Text="حسابات الموظفين" FontSize="18" FontWeight="SemiBold"/>
@@ -31,7 +31,7 @@
                     </DataGrid>
                 </DockPanel>
             </Border>
-            <Border Grid.Column="1" Background="White" CornerRadius="12" Padding="16">
+            <Border Grid.Column="1" Style="{StaticResource MedicalCard}" Padding="18">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
                         <TextBlock Text="بيانات المستخدم ونطاق القسم" FontSize="19" FontWeight="Bold" Margin="0,0,0,12"/>
@@ -51,7 +51,7 @@
                         <TextBlock Text="كلمة المرور (عند إنشاء الحساب فقط، 12 حرفا على الأقل)"/>
                         <PasswordBox x:Name="PasswordBox" Margin="0,3,0,8"/>
                         <TextBlock Text="الصلاحيات التفصيلية" FontSize="16" FontWeight="Bold" Margin="0,12,0,7"/>
-                        <Border BorderBrush="#CBD9DF" BorderThickness="1" CornerRadius="7" Padding="12" MaxHeight="210">
+                        <Border BorderBrush="{StaticResource MedicalLine}" BorderThickness="1" CornerRadius="10" Padding="12" MaxHeight="210">
                             <ScrollViewer VerticalScrollBarVisibility="Auto">
                                 <ItemsControl x:Name="GrantsList">
                                     <ItemsControl.ItemTemplate>
