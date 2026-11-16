@@ -370,15 +370,22 @@ public static class HospitalRoutes
         return Results.Created($"/api/patients/{patient.Id}", patient);
     }
 
-    private static async Task<IResult> ListPatients(HospitalDbContext db, ClaimsPrincipal staff, string? search)
+    private static async Task<IResult> ListPatients(HospitalDbContext db, ClaimsPrincipal staff,
+        string? search, int page = 1, int pageSize = 100)
     {
         if (search?.Length > 100) throw new DomainException("البحث طويل جدا.");
+        var (offset, count) = PagingRules.Validate(page, pageSize);
         bool global = DepartmentClaims.HasGlobalScope(staff);
         Guid? own = DepartmentClaims.Department(staff);
-        var query = db.Patients.AsNoTracking().Where(p => global || (own != null && p.DepartmentId == own));
+        var query = db.Patients.AsNoTracking()
+            .Where(p => global || (own != null && p.DepartmentId == own));
         if (!string.IsNullOrWhiteSpace(search))
-            query = query.Where(x => x.FileNumber.Contains(search) || x.FullName.Contains(search));
-        return Results.Ok(await query.OrderByDescending(x => x.CreatedAtUtc).Take(100)
+        {
+            string term = search.Trim();
+            query = query.Where(x => x.FileNumber.Contains(term) || x.FullName.Contains(term));
+        }
+        return Results.Ok(await query.OrderByDescending(x => x.CreatedAtUtc)
+            .ThenByDescending(x => x.Id).Skip(offset).Take(count)
             .Select(x => new { x.Id, x.FileNumber, x.FullName }).ToListAsync());
     }
 
@@ -557,17 +564,30 @@ public static class HospitalRoutes
         return Results.Created($"/api/invoices/{invoice.Id}", new { invoice.Id, invoice.InvoiceNumber, invoice.Total, invoice.Paid });
     }
 
-    private static async Task<IResult> ListInvoices(HospitalDbContext db, ClaimsPrincipal staff)
+    private static async Task<IResult> ListInvoices(HospitalDbContext db, ClaimsPrincipal staff,
+        string? search, int page = 1, int pageSize = 100)
     {
-        bool global = DepartmentClaims.HasGlobalScope(staff); Guid? own = DepartmentClaims.Department(staff);
-        return Results.Ok(await db.Invoices.AsNoTracking()
-            .Where(i => global || (own != null && i.DepartmentId == own))
-            .OrderByDescending(i => i.IssuedAtUtc).Take(100)
+        if (search?.Length > 100) throw new DomainException("البحث طويل جدا.");
+        var (offset, count) = PagingRules.Validate(page, pageSize);
+        bool global = DepartmentClaims.HasGlobalScope(staff);
+        Guid? own = DepartmentClaims.Department(staff);
+        var query = db.Invoices.AsNoTracking()
+            .Where(i => global || (own != null && i.DepartmentId == own));
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            string term = search.Trim();
+            query = query.Where(i => i.InvoiceNumber.Contains(term) ||
+                db.Patients.Any(p => p.Id == i.PatientId &&
+                    (p.FileNumber.Contains(term) || p.FullName.Contains(term))));
+        }
+        return Results.Ok(await query.OrderByDescending(i => i.IssuedAtUtc)
+            .ThenByDescending(i => i.Id).Skip(offset).Take(count)
             .Select(i => new
             {
                 i.Id, i.InvoiceNumber, i.IssuedAtUtc, i.Total, i.Paid,
                 Balance = i.Total - i.Paid,
-                PatientName = db.Patients.Where(p => p.Id == i.PatientId).Select(p => p.FullName).FirstOrDefault()
+                PatientName = db.Patients.Where(p => p.Id == i.PatientId)
+                    .Select(p => p.FullName).FirstOrDefault()
             }).ToListAsync());
     }
 

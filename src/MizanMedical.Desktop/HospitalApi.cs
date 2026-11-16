@@ -117,9 +117,16 @@ public sealed class HospitalApi
         return await Read<T>(response);
     }
 
-    public Task<List<PatientDto>> Patients() => Get<List<PatientDto>>("api/patients");
+    private static string PagedQuery(string path, string? search, int page, int pageSize) =>
+        path + "?page=" + page.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+        "&pageSize=" + pageSize.ToString(System.Globalization.CultureInfo.InvariantCulture) +
+        (string.IsNullOrWhiteSpace(search) ? "" : "&search=" + Uri.EscapeDataString(search.Trim()));
+
+    public Task<List<PatientDto>> Patients(string? search = null, int page = 1, int pageSize = 100) =>
+        Get<List<PatientDto>>(PagedQuery("api/patients", search, page, pageSize));
     public Task<List<ServiceDto>> Services() => Get<List<ServiceDto>>("api/services");
-    public Task<List<InvoiceDto>> Invoices() => Get<List<InvoiceDto>>("api/invoices");
+    public Task<List<InvoiceDto>> Invoices(string? search = null, int page = 1, int pageSize = 100) =>
+        Get<List<InvoiceDto>>(PagedQuery("api/invoices", search, page, pageSize));
     public Task<PersonalDeskSummaryDto> MyCashDeskSummary() => Get<PersonalDeskSummaryDto>("api/cash-desks/mine/summary");
     public Task<List<CashDeskDto>> CashDesks() => Get<List<CashDeskDto>>("api/cash-desks");
     public Task<List<CashShiftDto>> OpenShifts() => Get<List<CashShiftDto>>("api/shifts/open");
