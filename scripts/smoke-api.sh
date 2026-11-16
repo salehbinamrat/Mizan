@@ -25,7 +25,7 @@ TOKEN=$(login "$MIZAN_TEST_ADMIN_USERNAME" "$MIZAN_TEST_ADMIN_PASSWORD")
 setupStatus=$(curl --silent --show-error --fail-with-body "$BASE/api/initial-setup/status")
 assert_eq "$(jq -r .required <<< "$setupStatus")" false
 assert_eq "$(jq -r .canInitialize <<< "$setupStatus")" false
-assert_eq "$(status "$TOKEN" POST initial-setup/complete '{"setupCode":"invalid"}') " 401
+assert_eq "$(status "$TOKEN" POST initial-setup/complete '{"setupCode":"invalid"}')" 401
 ownerContext=$(get auth/me)
 jq -e '.fullName | type == "string" and length > 0' <<< "$ownerContext" >/dev/null ||
   { echo 'Session context must include full name'; exit 1; }
