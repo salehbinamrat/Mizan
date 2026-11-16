@@ -79,7 +79,7 @@ invoiceB=$(post invoices "$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" 
 INVOICE_B=$(jq -r .id <<< "$invoiceB")
 nameA="ward$RANDOM$RANDOM"
 PASS='ward-only-password-12345!'
-created=$(post users "$(jq -n --arg u "$nameA" --arg d "$WARD" --arg pw "$PASS" '{username:$u,fullName:"مسؤول قسم الطوارئ",password:$pw,role:"DepartmentManager",departmentId:$d,allDepartments:false,permissions:["patients.read","patients.create","invoices.read","invoices.issue","services.read","reports.read","shifts.open","desks.read"]}')")
+created=$(post users "$(jq -n --arg u "$nameA" --arg d "$WARD" --arg pw "$PASS" '{username:$u,fullName:"مسؤول قسم الطوارئ",password:$pw,role:"DepartmentManager",departmentId:$d,allDepartments:false,permissions:["patients.read","patients.create","invoices.read","invoices.issue","services.read","reports.read","shifts.open","shifts.read","desks.read"]}')")
 USER_A=$(jq -r .id <<< "$created")
 TOKEN_A=$(login "$nameA" "$PASS")
 # Same-department coworker must not operate another cashier's box.

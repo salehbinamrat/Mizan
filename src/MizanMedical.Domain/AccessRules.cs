@@ -47,10 +47,14 @@ public static class AccessRules
         actorIsOwner && ((allDepartments && departmentId is null) ||
                          (!allDepartments && departmentId is { } id && id != Guid.Empty));
 
-    public static bool ArePermissionsValid(IEnumerable<string> grants, bool targetIsOwner = false) =>
-        grants.Distinct(StringComparer.Ordinal).All(key =>
+    public static bool ArePermissionsValid(IEnumerable<string> grants, bool targetIsOwner = false)
+    {
+        var selected = grants.ToHashSet(StringComparer.Ordinal);
+        return selected.All(key =>
             HospitalPermissions.All.Contains(key, StringComparer.Ordinal) &&
-            (targetIsOwner || !HospitalPermissions.OwnerOnly.Contains(key)));
+            (targetIsOwner || !HospitalPermissions.OwnerOnly.Contains(key))) &&
+            (targetIsOwner || PermissionPrerequisiteRules.Missing(selected).Count == 0);
+    }
 }
 
 public static class DepartmentClaims
