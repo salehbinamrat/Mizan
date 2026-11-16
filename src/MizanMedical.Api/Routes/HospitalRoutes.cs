@@ -22,7 +22,8 @@ public static class HospitalRoutes
         secured.MapGet("/auth/me", (ClaimsPrincipal staff) => Results.Ok(new
         {
             Id = CurrentStaff.Id(staff), Username = staff.Identity?.Name,
-            Name = staff.FindFirstValue("display_name"), Role = staff.FindFirstValue(ClaimTypes.Role),
+            Name = staff.FindFirstValue("display_name"), FullName = staff.FindFirstValue("display_name"),
+            Role = staff.FindFirstValue(ClaimTypes.Role),
             DepartmentId = DepartmentClaims.Department(staff), AllDepartments = DepartmentClaims.HasGlobalScope(staff),
             IsSystemOwner = DepartmentClaims.IsOwner(staff),
             Permissions = HospitalPermissions.All.Where(p => DepartmentClaims.HasPermission(staff, p)).ToArray()

@@ -14,7 +14,7 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
                     <TextBlock x:Name="UserLabel" Foreground="White" FontSize="15" VerticalAlignment="Center" Margin="12,0"/>
-                    <TextBlock Text="القسم النشط:" Foreground="White" VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    <TextBlock x:Name="DepartmentScopeLabel" Text="قسم المستخدم:" Foreground="White" VerticalAlignment="Center" Margin="12,0,0,0"/>
                     <ComboBox x:Name="ActiveDepartmentCombo" Width="170" Height="34"
                               DisplayMemberPath="Name" SelectedValuePath="Id" Margin="6"/>
                     <Button Content="تحديث القوائم" Click="Refresh_Click" Background="#227B8B"/>

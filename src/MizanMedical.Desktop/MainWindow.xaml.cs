@@ -6,6 +6,7 @@ using System.Windows.Documents;
 using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Controls;
+using MizanMedical.Domain;
 
 namespace MizanMedical.Desktop;
 
@@ -13,42 +14,69 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<InvoiceLineChoice> _draftLines = [];
     private bool _busy;
+    private bool _landingSelected;
     // Reuse the same request ID if the server commits but the network response is lost.
     private Guid _pendingInvoiceId = Guid.NewGuid();
     private Guid _pendingReceiptId = Guid.NewGuid();
     private Guid _pendingExpenseId = Guid.NewGuid();
 
-    private bool Has(string permission) => App.Api.Staff?.Permissions?.Contains(permission, StringComparer.Ordinal) == true;
-    private bool CanBilling => Has("patients.read") || Has("patients.create") || Has("invoices.read") || Has("invoices.issue");
-    private bool CanShift => Has("shifts.read") || Has("shifts.open") || Has("shifts.close");
-    private bool CanReport => Has("reports.read");
-    private bool IsAdmin => Has("users.manage") || Has("desks.manage");
+    private bool Has(string permission) =>
+        App.Api.Staff?.IsSystemOwner == true ||
+        App.Api.Staff?.Permissions?.Contains(permission, StringComparer.Ordinal) == true;
+    private bool CanReport => Has(HospitalPermissions.ReportsRead);
 
     public MainWindow()
     {
         InitializeComponent();
         DraftLinesGrid.ItemsSource = _draftLines;
         ReportDate.SelectedDate = DateTime.Today;
-        UserLabel.Text = $"{App.Api.Staff?.FullName} — {App.Api.Staff?.Role}";
-        DashboardTab.Visibility = CanReport ? Visibility.Visible : Visibility.Collapsed;
-        PatientsTab.Visibility = (Has("patients.read") || Has("patients.create")) ? Visibility.Visible : Visibility.Collapsed;
-        PatientForm.Visibility = Has("patients.create") ? Visibility.Visible : Visibility.Collapsed;
-        ServicesTab.Visibility = (Has("services.read") || Has("services.manage")) ? Visibility.Visible : Visibility.Collapsed;
-        ServiceForm.Visibility = Has("services.manage") ? Visibility.Visible : Visibility.Collapsed;
-        InvoicesTab.Visibility = (Has("invoices.read") || Has("invoices.issue")) ? Visibility.Visible : Visibility.Collapsed;
-        InvoiceForm.Visibility = Has("invoices.issue") ? Visibility.Visible : Visibility.Collapsed;
-        InvoiceLineForm.Visibility = Has("invoices.issue") ? Visibility.Visible : Visibility.Collapsed;
-        DraftLinesGrid.Visibility = Has("invoices.issue") ? Visibility.Visible : Visibility.Collapsed;
-        InvoiceListGroup.Visibility = Has("invoices.read") ? Visibility.Visible : Visibility.Collapsed;
-        OpenShiftForm.Visibility = Has("shifts.open") ? Visibility.Visible : Visibility.Collapsed;
-        CloseShiftForm.Visibility = Has("shifts.close") ? Visibility.Visible : Visibility.Collapsed;
-        CashTab.Visibility = CanShift || Has("desks.read") ? Visibility.Visible : Visibility.Collapsed;
-        ReceiptsTab.Visibility = Has("receipts.create") ? Visibility.Visible : Visibility.Collapsed;
-        ExpensesTab.Visibility = Has("expenses.create") ? Visibility.Visible : Visibility.Collapsed;
-        // Cash desks are created automatically with accounts, not through a free-form form.
-        ManageUsersGroup.Visibility = Has("users.manage") ? Visibility.Visible : Visibility.Collapsed;
-        BackupGroup.Visibility = App.Api.Staff?.IsSystemOwner == true ? Visibility.Visible : Visibility.Collapsed;
-        AdminTab.Visibility = IsAdmin ? Visibility.Visible : Visibility.Collapsed;
+        ApplyAccountPermissions();
+    }
+
+    private void ApplyAccountPermissions()
+    {
+        var user = App.Api.Staff ?? throw new InvalidOperationException("يجب تسجيل الدخول أولا.");
+        var previousTab = ModulesTabs.SelectedItem as TabItem;
+        var authorized = LoginNavigationRules.VisibleModules(user.IsSystemOwner, user.Permissions).ToHashSet();
+        UserLabel.Text = $"{user.FullName} — {LoginNavigationRules.ArabicRole(user.Role, user.IsSystemOwner)}";
+
+        DashboardTab.Visibility = authorized.Contains(DesktopModule.Dashboard) ? Visibility.Visible : Visibility.Collapsed;
+        PatientsTab.Visibility = authorized.Contains(DesktopModule.Patients) ? Visibility.Visible : Visibility.Collapsed;
+        ServicesTab.Visibility = authorized.Contains(DesktopModule.Services) ? Visibility.Visible : Visibility.Collapsed;
+        InvoicesTab.Visibility = authorized.Contains(DesktopModule.Invoices) ? Visibility.Visible : Visibility.Collapsed;
+        CashTab.Visibility = authorized.Contains(DesktopModule.CashDesk) ? Visibility.Visible : Visibility.Collapsed;
+        ReceiptsTab.Visibility = authorized.Contains(DesktopModule.Receipts) ? Visibility.Visible : Visibility.Collapsed;
+        ExpensesTab.Visibility = authorized.Contains(DesktopModule.Expenses) ? Visibility.Visible : Visibility.Collapsed;
+        AdminTab.Visibility = authorized.Contains(DesktopModule.Administration) ? Visibility.Visible : Visibility.Collapsed;
+
+        PatientForm.Visibility = Has(HospitalPermissions.PatientsCreate) ? Visibility.Visible : Visibility.Collapsed;
+        ServiceForm.Visibility = Has(HospitalPermissions.ServicesManage) ? Visibility.Visible : Visibility.Collapsed;
+        InvoiceForm.Visibility = Has(HospitalPermissions.InvoicesIssue) ? Visibility.Visible : Visibility.Collapsed;
+        InvoiceLineForm.Visibility = Has(HospitalPermissions.InvoicesIssue) ? Visibility.Visible : Visibility.Collapsed;
+        DraftLinesGrid.Visibility = Has(HospitalPermissions.InvoicesIssue) ? Visibility.Visible : Visibility.Collapsed;
+        InvoiceListGroup.Visibility = Has(HospitalPermissions.InvoicesRead) ? Visibility.Visible : Visibility.Collapsed;
+        OpenShiftForm.Visibility = Has(HospitalPermissions.ShiftsOpen) ? Visibility.Visible : Visibility.Collapsed;
+        CloseShiftForm.Visibility = Has(HospitalPermissions.ShiftsClose) ? Visibility.Visible : Visibility.Collapsed;
+        ManageUsersGroup.Visibility = Has(HospitalPermissions.UsersManage) ? Visibility.Visible : Visibility.Collapsed;
+        BackupGroup.Visibility = user.IsSystemOwner ? Visibility.Visible : Visibility.Collapsed;
+
+        DesktopModule? first = LoginNavigationRules.LandingModule(user.Role, user.IsSystemOwner, user.Permissions);
+        var landingTab = first switch
+        {
+            DesktopModule.Dashboard => DashboardTab,
+            DesktopModule.Patients => PatientsTab,
+            DesktopModule.Services => ServicesTab,
+            DesktopModule.Invoices => InvoicesTab,
+            DesktopModule.CashDesk => CashTab,
+            DesktopModule.Receipts => ReceiptsTab,
+            DesktopModule.Expenses => ExpensesTab,
+            DesktopModule.Administration => AdminTab,
+            _ => null
+        };
+        // Keep the user's current workspace on refresh unless its permission was revoked.
+        if (!_landingSelected || previousTab?.Visibility != Visibility.Visible)
+            ModulesTabs.SelectedItem = landingTab;
+        _landingSelected = true;
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await Perform(RefreshAll);
@@ -56,11 +84,19 @@ public partial class MainWindow : Window
 
     private async Task RefreshAll()
     {
+        // The server is authoritative: reload permissions and assignment whenever data refreshes.
+        await App.Api.RefreshSession();
+        ApplyAccountPermissions();
+        var account = App.Api.Staff ?? throw new InvalidOperationException("انتهت جلسة الدخول.");
         var departments = await App.Api.Departments();
         Guid? previouslySelected = ActiveDepartmentCombo.SelectedValue as Guid?;
         ActiveDepartmentCombo.ItemsSource = departments;
-        ActiveDepartmentCombo.SelectedValue = previouslySelected ?? App.Api.Staff?.DepartmentId ??
-            (departments.Count == 1 ? departments[0].Id : Guid.Empty);
+        bool globalScope = account.IsSystemOwner || account.AllDepartments;
+        ActiveDepartmentCombo.IsEnabled = globalScope;
+        DepartmentScopeLabel.Text = globalScope ? "القسم للإجراءات:" : "قسم المستخدم:";
+        ActiveDepartmentCombo.SelectedValue = globalScope
+            ? (previouslySelected ?? (departments.Count == 1 ? departments[0].Id : Guid.Empty))
+            : account.DepartmentId;
         if (Has("patients.read"))
         {
             var patients = await App.Api.Patients();

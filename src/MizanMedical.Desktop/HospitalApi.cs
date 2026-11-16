@@ -31,9 +31,30 @@ public sealed class HospitalApi
 
     public async Task Login(string username, string password)
     {
+        Staff = null;
+        _http.DefaultRequestHeaders.Authorization = null;
         var result = await Post<LoginResult>("api/auth/login", new { Username = username, Password = password });
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", result.Token);
-        Staff = result.User;
+        try
+        {
+            // Verify the bearer token against the authoritative, current server account.
+            var current = await Get<LoginUser>("api/auth/me");
+            if (current.Id != result.User.Id)
+                throw new InvalidOperationException("تعذر تأكيد حساب تسجيل الدخول.");
+            Staff = current;
+        }
+        catch
+        {
+            Staff = null;
+            _http.DefaultRequestHeaders.Authorization = null;
+            throw;
+        }
+    }
+
+    public async Task RefreshSession()
+    {
+        if (Staff is null) throw new InvalidOperationException("يجب تسجيل الدخول أولا.");
+        Staff = await Get<LoginUser>("api/auth/me");
     }
 
     public async Task Logout()
