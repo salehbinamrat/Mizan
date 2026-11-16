@@ -162,7 +162,13 @@ public partial class MainWindow : Window
             try
             {
                 var desk = await App.Api.MyCashDeskSummary();
-                PersonalDeskSummaryText.Text = $"صندوقي: {desk.Name} | افتتاح: {desk.OpeningCash:N2} | قبض: {desk.Received:N2} | صرف: {desk.Spent:N2} | الرصيد المتوقع: {desk.Expected:N2}";
+                PersonalDeskSummaryText.Text = desk.ShiftId is not null
+                    ? $"صندوقي: {desk.Name} | افتتاح: {desk.OpeningCash:N2} | قبض: {desk.Received:N2} | صرف: {desk.Spent:N2} | الرصيد المتوقع: {desk.Expected:N2}"
+                    : desk.IsFirstShift
+                        ? $"صندوقي: {desk.Name} | لم تُسجل مناوبة سابقة. يتطلب الرصيد الأولي مراجعة مصدر النقدية."
+                        : desk.NextOpeningCash is decimal previous
+                            ? $"صندوقي: {desk.Name} | رصيد الافتتاح التالي الإلزامي: {previous:N2} (مطابق لإقفال المناوبة السابقة)."
+                            : $"صندوقي: {desk.Name} | الرصيد السابق غير مكتمل؛ راجع المسؤول قبل فتح مناوبة جديدة.";
             }
             catch (InvalidOperationException)
             {

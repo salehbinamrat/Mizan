@@ -324,8 +324,25 @@ public static class HospitalRoutes
         await ValidateAccountScope(db, input.DepartmentId, input.AllDepartments, permissions);
         await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
         bool changingDepartment = user.DepartmentId != input.DepartmentId || user.AllDepartments != input.AllDepartments;
-        if (changingDepartment && await db.CashShifts.AnyAsync(x => x.CashierId == user.Id && x.ClosedAtUtc == null))
-            throw new DomainException("يجب إقفال مناوبة الموظف قبل نقله إلى قسم آخر.");
+        bool relinquishingCashDesk = changingDepartment || (user.IsActive && !input.IsActive);
+        if (relinquishingCashDesk)
+        {
+            // A disabled or reassigned cashier must not strand cash in an inaccessible desk.
+            var desks = await db.CashDesks.AsNoTracking()
+                .Where(x => x.OwnerUserId == user.Id && x.IsActive).Select(x => x.Id).ToListAsync();
+            if (await db.CashShifts.AnyAsync(x => x.CashierId == user.Id && x.ClosedAtUtc == null))
+                throw new DomainException("يجب إقفال مناوبة الموظف قبل نقله أو تعطيل حسابه.");
+            foreach (var deskId in desks)
+            {
+                var previous = await db.CashShifts.AsNoTracking()
+                    .Where(x => x.CashDeskId == deskId && x.ClosedAtUtc != null)
+                    .OrderByDescending(x => x.ClosedAtUtc).ThenByDescending(x => x.Id)
+                    .Select(x => new { x.CountedCash, x.Variance }).FirstOrDefaultAsync();
+                if (!CashShiftContinuityRules.CanDeactivateDesk(previous is not null,
+                        previous?.CountedCash, previous?.Variance))
+                    throw new DomainException("لا يمكن نقل الموظف أو تعطيله مع وجود عهدة نقدية أو فرق صندوق غير مسوى. استكمل التسوية المعتمدة أولا.");
+            }
+        }
         if (input.IsActive && input.DepartmentId.HasValue && (!user.IsActive || changingDepartment))
             await RequireFreeSeat(db, input.DepartmentId.Value);
         if (changingDepartment)
@@ -468,32 +485,60 @@ public static class HospitalRoutes
         if (desk is null) return Results.NotFound();
         var shift = await db.CashShifts.AsNoTracking()
             .FirstOrDefaultAsync(x => x.CashDeskId == desk.Id && x.CashierId == me && x.ClosedAtUtc == null);
-        if (shift is null) return Results.Ok(new { desk.Id, desk.Name, desk.DepartmentId,
-            ShiftId = (Guid?)null, OpeningCash = 0m, Received = 0m, Spent = 0m, Expected = 0m });
+        if (shift is null)
+        {
+            var previous = await db.CashShifts.AsNoTracking()
+                .Where(x => x.CashDeskId == desk.Id && x.ClosedAtUtc != null)
+                .OrderByDescending(x => x.ClosedAtUtc).ThenByDescending(x => x.Id)
+                .Select(x => new { x.CountedCash }).FirstOrDefaultAsync();
+            return Results.Ok(new { desk.Id, desk.Name, desk.DepartmentId,
+                ShiftId = (Guid?)null, OpeningCash = 0m, Received = 0m, Spent = 0m, Expected = 0m,
+                NextOpeningCash = previous is null ? (decimal?)null : previous.CountedCash,
+                IsFirstShift = previous is null });
+        }
         decimal received = await db.CashReceipts.Where(x => x.CashShiftId == shift.Id)
             .SumAsync(x => (decimal?)x.Amount) ?? 0m;
         decimal spent = await db.CashExpenses.Where(x => x.CashShiftId == shift.Id)
             .SumAsync(x => (decimal?)x.Amount) ?? 0m;
         return Results.Ok(new { desk.Id, desk.Name, desk.DepartmentId,
             ShiftId = (Guid?)shift.Id, shift.OpeningCash, Received = received, Spent = spent,
-            Expected = shift.OpeningCash + received - spent });
+            Expected = shift.OpeningCash + received - spent, NextOpeningCash = (decimal?)null,
+            IsFirstShift = false });
     }
 
     private static async Task<IResult> OpenShift(OpenShiftRequest input, HospitalDbContext db, ClaimsPrincipal staff)
     {
         FinanceRules.RequireNonNegativeMoney(input.OpeningCash, "رصيد افتتاح الصندوق");
-        var desk = await db.CashDesks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == RequiredId(input.CashDeskId) && x.IsActive);
+        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var desk = await db.CashDesks.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == RequiredId(input.CashDeskId) && x.IsActive);
         if (desk is null || !DepartmentScope.CanSee(staff, desk.DepartmentId) ||
             !CashDeskRules.CanOperate(CurrentStaff.Id(staff), DepartmentClaims.Department(staff),
                 desk.OwnerUserId, desk.DepartmentId, desk.IsActive)) return Results.NotFound();
         if (await db.CashShifts.AnyAsync(x => x.CashierId == CurrentStaff.Id(staff) && x.ClosedAtUtc == null))
             throw new DomainException("لديك مناوبة مفتوحة بالفعل.");
+        var previous = await db.CashShifts.AsNoTracking()
+            .Where(x => x.CashDeskId == desk.Id && x.ClosedAtUtc != null)
+            .OrderByDescending(x => x.ClosedAtUtc).ThenByDescending(x => x.Id)
+            .Select(x => new { x.Id, x.CountedCash }).FirstOrDefaultAsync();
+        CashShiftContinuityRules.RequireOpening(input.OpeningCash, previous is not null, previous?.CountedCash);
         var shift = new CashShift
-        { CashDeskId = input.CashDeskId, CashierId = CurrentStaff.Id(staff),
+        { CashDeskId = desk.Id, CashierId = CurrentStaff.Id(staff),
           DepartmentId = desk.DepartmentId, OpeningCash = input.OpeningCash };
         db.CashShifts.Add(shift);
-        db.AuditEvents.Add(Audit(staff, "shift.open", "shift", shift.Id, shift.DepartmentId));
+        db.AuditEvents.Add(new AuditEvent
+        {
+            StaffUserId = CurrentStaff.Id(staff), Action = "shift.open", EntityType = "shift",
+            EntityId = shift.Id, DepartmentId = shift.DepartmentId,
+            Details = JsonSerializer.Serialize(new
+            {
+                shift.CashDeskId, shift.OpeningCash, PreviousClosedShiftId = previous?.Id,
+                PreviousCountedCash = previous?.CountedCash,
+                Source = previous is null ? "initial_float" : "previous_close"
+            })
+        });
         await db.SaveChangesAsync();
+        await trx.CommitAsync();
         return Results.Created($"/api/shifts/{shift.Id}", new { shift.Id, shift.CashDeskId, shift.OpeningCash, shift.OpenedAtUtc });
     }
 
@@ -524,7 +569,16 @@ public static class HospitalRoutes
             throw new DomainException("يوجد فرق في الصندوق، يجب كتابة توضيح قبل الإقفال.");
         shift.CloseComment = input.Comment?.Trim() is { Length: > 0 } comment ? ValidText(comment, "الملاحظة", 500) : null;
         shift.ClosedAtUtc = DateTime.UtcNow;
-        db.AuditEvents.Add(Audit(staff, "shift.close", "shift", shift.Id, shift.DepartmentId));
+        db.AuditEvents.Add(new AuditEvent
+        {
+            StaffUserId = CurrentStaff.Id(staff), Action = "shift.close",
+            EntityType = "shift", EntityId = shift.Id, DepartmentId = shift.DepartmentId,
+            Details = JsonSerializer.Serialize(new
+            {
+                shift.OpeningCash, Received = received, Spent = spent,
+                shift.ExpectedCash, shift.CountedCash, shift.Variance, shift.CloseComment
+            })
+        });
         await db.SaveChangesAsync();
         await trx.CommitAsync();
         return Results.Ok(new { shift.Id, shift.OpeningCash, shift.ExpectedCash, shift.CountedCash, shift.Variance, shift.ClosedAtUtc });

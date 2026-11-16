@@ -142,7 +142,7 @@
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="الصندوق" VerticalAlignment="Center"/>
                                 <ComboBox x:Name="OpenDeskCombo" Width="280" DisplayMemberPath="Name" SelectedValuePath="Id"/>
-                                <TextBlock Text="الرصيد الافتتاحي" VerticalAlignment="Center"/>
+                                <TextBlock Text="رصيد الافتتاح (يطابق الإقفال السابق)" VerticalAlignment="Center" ToolTip="في المناوبات اللاحقة يجب إدخال النقد الفعلي المعدود عند آخر إقفال للصندوق."/>
                                 <TextBox x:Name="OpeningCashBox" Width="155" FlowDirection="LeftToRight" Text="0" Language="en-US"/>
                                 <Button Content="فتح المناوبة" Click="OpenShift_Click"/>
                             </StackPanel>

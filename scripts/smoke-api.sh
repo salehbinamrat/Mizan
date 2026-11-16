@@ -131,6 +131,27 @@ TOKEN="$TOKEN_CASHIER"
 close=$(post shifts/close "$(jq -n --arg s "$SHIFT" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
 assert_eq "$(jq -r .expectedCash <<< "$close")" 140
 assert_eq "$(jq -r .variance <<< "$close")" 0
+# Carry forward exactly the last counted balance; no unexplained opening cash.
+assert_eq "$(status "$TOKEN_CASHIER" POST shifts/open "$(jq -n --arg d "$DESK" '{cashDeskId:$d,openingCash:141}')")" 400
+assert_eq "$(get shifts/open | jq 'length')" 0
+carried=$(post shifts/open "$(jq -n --arg d "$DESK" '{cashDeskId:$d,openingCash:140}')")
+NEW_SHIFT=$(jq -r .id <<< "$carried")
+assert_eq "$(jq -r .openingCash <<< "$carried")" 140
+assert_eq "$(status "$TOKEN_CASHIER" POST shifts/open "$(jq -n --arg d "$DESK" '{cashDeskId:$d,openingCash:140}')")" 400
+assert_eq "$(get shifts/open | jq 'length')" 1
+closeCarried=$(post shifts/close "$(jq -n --arg s "$NEW_SHIFT" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
+assert_eq "$(jq -r .expectedCash <<< "$closeCarried")" 140
+# Owner must not strand a nonzero cash balance by reassigning or disabling the cashier.
+TOKEN="$TOKEN_OWNER"
+cashierGrants='["desks.read","shifts.open","shifts.read","shifts.close","invoices.read","receipts.create","expenses.create"]'
+moveCashier=$(jq -n --arg d "$LAB" --argjson rights "$cashierGrants" \
+  '{fullName:"أمين صندوق",role:"Cashier",departmentId:$d,allDepartments:false,isActive:true,permissions:$rights}')
+assert_eq "$(status "$TOKEN_OWNER" PUT "users/$CASHIER_ID" "$moveCashier")" 400
+disableCashier=$(jq -n --arg d "$WARD" --argjson rights "$cashierGrants" \
+  '{fullName:"أمين صندوق",role:"Cashier",departmentId:$d,allDepartments:false,isActive:false,permissions:$rights}')
+assert_eq "$(status "$TOKEN_OWNER" PUT "users/$CASHIER_ID" "$disableCashier")" 400
+TOKEN="$TOKEN_CASHIER"
+assert_eq "$(get cash-desks | jq 'length')" 1
 # Password change is self-service for each logged-in account, including original owner.
 # It invalidates all existing sessions and requires re-authentication.
 NEW_CASHIER_PASS='cashier-new-password-2026!'
