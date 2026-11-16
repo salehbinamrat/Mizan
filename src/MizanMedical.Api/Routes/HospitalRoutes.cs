@@ -32,8 +32,11 @@ public static class HospitalRoutes
             .RequireAuthorization(HospitalPermissions.UsersManage);
         secured.MapPost("/departments", AddDepartment).RequireAuthorization(HospitalPermissions.DepartmentsManage);
         secured.MapGet("/departments", ListDepartments);
+        secured.MapPut("/departments/{departmentId:guid}/limit", UpdateDepartmentLimit).RequireAuthorization(HospitalPermissions.DepartmentsManage);
+        secured.MapGet("/departments/usage", DepartmentUsage).RequireAuthorization(HospitalPermissions.UsersManage);
         secured.MapPost("/users", AddUser).RequireAuthorization(HospitalPermissions.UsersManage);
         secured.MapGet("/users", ListUsers).RequireAuthorization(HospitalPermissions.UsersManage);
+        secured.MapPost("/users/{userId:guid}/personal-desk", ProvisionPersonalDesk).RequireAuthorization(HospitalPermissions.UsersManage);
         secured.MapPut("/users/{userId:guid}", UpdateUser).RequireAuthorization(HospitalPermissions.UsersManage);
         secured.MapPost("/users/{userId:guid}/password", ResetUserPassword).RequireAuthorization(HospitalPermissions.UsersManage);
         secured.MapPost("/patients", AddPatient).RequireAuthorization(HospitalPermissions.PatientsCreate);
@@ -42,6 +45,7 @@ public static class HospitalRoutes
         secured.MapGet("/services", ListServices).RequireAuthorization(HospitalPermissions.ServicesRead);
         secured.MapPost("/cash-desks", AddCashDesk).RequireAuthorization(HospitalPermissions.DesksManage);
         secured.MapGet("/cash-desks", ListCashDesks).RequireAuthorization(HospitalPermissions.DesksRead);
+        secured.MapGet("/cash-desks/mine/summary", MyCashDeskSummary).RequireAuthorization(HospitalPermissions.DesksRead);
         secured.MapPost("/shifts/open", OpenShift).RequireAuthorization(HospitalPermissions.ShiftsOpen);
         secured.MapGet("/shifts/open", OpenShifts).RequireAuthorization(HospitalPermissions.ShiftsRead);
         secured.MapPost("/shifts/close", CloseShift).RequireAuthorization(HospitalPermissions.ShiftsClose);
@@ -160,12 +164,15 @@ public static class HospitalRoutes
         var dept = new Department
         {
             Code = ValidText(input.Code, "رمز القسم", 40).ToUpperInvariant(),
-            Name = ValidText(input.Name, "اسم القسم", 150)
+            Name = ValidText(input.Name, "اسم القسم", 150),
+            MaxActiveUsers = input.MaxActiveUsers
         };
+        if (!CashDeskRules.CanSetUserLimit(input.MaxActiveUsers, 0))
+            throw new DomainException("عدد مستخدمي القسم يجب أن يكون بين 1 و10000.");
         db.Departments.Add(dept);
         db.AuditEvents.Add(Audit(staff, "department.create", "department", dept.Id));
         await db.SaveChangesAsync();
-        return Results.Created($"/api/departments/{dept.Id}", new { dept.Id, dept.Code, dept.Name });
+        return Results.Created($"/api/departments/{dept.Id}", new { dept.Id, dept.Code, dept.Name, dept.MaxActiveUsers });
     }
 
     private static async Task<IResult> ListDepartments(HospitalDbContext db, ClaimsPrincipal staff)
@@ -174,7 +181,74 @@ public static class HospitalRoutes
         Guid? own = DepartmentClaims.Department(staff);
         return Results.Ok(await db.Departments.AsNoTracking()
             .Where(d => d.IsActive && (global || (own != null && d.Id == own)))
-            .OrderBy(d => d.Name).Select(d => new { d.Id, d.Code, d.Name }).ToListAsync());
+            .OrderBy(d => d.Name).Select(d => new { d.Id, d.Code, d.Name, d.MaxActiveUsers }).ToListAsync());
+    }
+
+
+    private static async Task<Department> LockDepartment(HospitalDbContext db, Guid id)
+    {
+        // Lock the departmental quota row before counting or creating staff.
+        var rows = await db.Departments.FromSqlInterpolated(
+            $"SELECT * FROM \"Departments\" WHERE \"Id\" = {id} FOR UPDATE").ToListAsync();
+        return rows.SingleOrDefault(x => x.IsActive)
+            ?? throw new DomainException("القسم غير موجود أو متوقف.");
+    }
+
+    private static async Task RequireFreeSeat(HospitalDbContext db, Guid dept)
+    {
+        var d = await LockDepartment(db, dept);
+        int used = await db.StaffUsers.CountAsync(u => u.IsActive && u.DepartmentId == dept);
+        if (!CashDeskRules.WithinDepartmentLimit(used, d.MaxActiveUsers))
+            throw new DomainException("بلغ القسم الحد الأعلى للمستخدمين النشطين.");
+    }
+
+    private static CashDesk PersonalDesk(StaffUser user)
+    {
+        var desk = new CashDesk { DepartmentId = user.DepartmentId, OwnerUserId = user.Id };
+        desk.Name = $"صندوق {user.Username[..Math.Min(30,user.Username.Length)]}-{desk.Id:N}";
+        return desk;
+    }
+
+    private static async Task<IResult> UpdateDepartmentLimit(Guid departmentId,
+        DepartmentLimitRequest input, HospitalDbContext db, ClaimsPrincipal staff)
+    {
+        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var department = await LockDepartment(db, RequiredId(departmentId));
+        int active = await db.StaffUsers.CountAsync(x => x.IsActive && x.DepartmentId == departmentId);
+        if (!CashDeskRules.CanSetUserLimit(input.MaxActiveUsers, active))
+            throw new DomainException("حد المستخدمين الجديد أقل من عدد الموظفين النشطين أو أكبر من 10000.");
+        department.MaxActiveUsers = input.MaxActiveUsers;
+        db.AuditEvents.Add(Audit(staff, "department.limit.update", "department", departmentId));
+        await db.SaveChangesAsync();
+        await trx.CommitAsync();
+        return Results.Ok(new { department.Id, department.MaxActiveUsers, ActiveUsers = active });
+    }
+
+    private static async Task<IResult> DepartmentUsage(HospitalDbContext db)
+    {
+        var counts = await db.StaffUsers.AsNoTracking().Where(x => x.IsActive && x.DepartmentId != null)
+            .GroupBy(x => x.DepartmentId).Select(g => new { DepartmentId = g.Key, Count = g.Count() }).ToListAsync();
+        var departments = await db.Departments.AsNoTracking().OrderBy(x => x.Name).ToListAsync();
+        return Results.Ok(departments.Select(d => new { d.Id, d.Code, d.Name, d.IsActive,
+            d.MaxActiveUsers, ActiveUsers = counts.FirstOrDefault(c => c.DepartmentId == d.Id)?.Count ?? 0 }));
+    }
+
+    private static async Task<IResult> ProvisionPersonalDesk(Guid userId, HospitalDbContext db, ClaimsPrincipal staff)
+    {
+        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var user = await db.StaffUsers.FirstOrDefaultAsync(x => x.Id == userId);
+        if (user is null || !user.IsActive || user.DepartmentId is null || user.IsSystemOwner || user.AllDepartments)
+            return Results.NotFound();
+        await LockDepartment(db, user.DepartmentId.Value);
+        var existing = await db.CashDesks.FirstOrDefaultAsync(x => x.OwnerUserId == user.Id && x.IsActive);
+        if (existing is not null)
+            return Results.Ok(new { existing.Id, existing.DepartmentId, existing.OwnerUserId, Repeated = true });
+        var desk = PersonalDesk(user);
+        db.CashDesks.Add(desk);
+        db.AuditEvents.Add(Audit(staff, "cashdesk.personal.provision", "cashdesk", desk.Id, desk.DepartmentId));
+        await db.SaveChangesAsync();
+        await trx.CommitAsync();
+        return Results.Created($"/api/cash-desks/{desk.Id}", new { desk.Id, desk.DepartmentId, desk.OwnerUserId });
     }
 
     private static async Task<IResult> AddUser(CreateUserRequest input, HospitalDbContext db, ClaimsPrincipal staff)
@@ -182,6 +256,8 @@ public static class HospitalRoutes
         var permissions = input.Permissions ?? [];
         await ValidateAccountScope(db, input.DepartmentId, input.AllDepartments, permissions);
         var (hash, salt) = PasswordSecurity.Create(input.Password);
+        await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        if (input.DepartmentId is Guid assigned) await RequireFreeSeat(db, assigned);
         var user = new StaffUser
         {
             Username = ValidateUsername(input.Username),
@@ -192,6 +268,7 @@ public static class HospitalRoutes
                 .Select(k => new UserPermission { Key = k }).ToList()
         };
         db.StaffUsers.Add(user);
+        if (user.DepartmentId.HasValue) db.CashDesks.Add(PersonalDesk(user));
         db.AuditEvents.Add(new AuditEvent
         {
             StaffUserId = CurrentStaff.Id(staff), Action = "user.create.scoped", EntityType = "user", EntityId = user.Id,
@@ -199,6 +276,7 @@ public static class HospitalRoutes
                 Permissions = user.Permissions.Select(x => x.Key).OrderBy(x => x).ToArray() })
         });
         await db.SaveChangesAsync();
+        await transaction.CommitAsync();
         return Results.Created($"/api/users/{user.Id}", new { user.Id, user.Username, user.FullName,
             Role = user.Role.ToString(), user.DepartmentId, user.AllDepartments, Permissions = permissions });
     }
@@ -220,6 +298,18 @@ public static class HospitalRoutes
         var permissions = input.Permissions ?? [];
         await ValidateAccountScope(db, input.DepartmentId, input.AllDepartments, permissions);
         await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        bool changingDepartment = user.DepartmentId != input.DepartmentId || user.AllDepartments != input.AllDepartments;
+        if (changingDepartment && await db.CashShifts.AnyAsync(x => x.CashierId == user.Id && x.ClosedAtUtc == null))
+            throw new DomainException("يجب إقفال مناوبة الموظف قبل نقله إلى قسم آخر.");
+        if (input.IsActive && input.DepartmentId.HasValue && (!user.IsActive || changingDepartment))
+            await RequireFreeSeat(db, input.DepartmentId.Value);
+        if (changingDepartment)
+        {
+            await db.CashDesks.Where(x => x.OwnerUserId == user.Id && x.IsActive)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsActive, false));
+            if (input.DepartmentId.HasValue)
+                db.CashDesks.Add(PersonalDesk(new StaffUser { Id = user.Id, Username = user.Username, DepartmentId = input.DepartmentId }));
+        }
         var before = new
         {
             Role = user.Role.ToString(), user.DepartmentId, user.AllDepartments, user.IsActive,
@@ -317,32 +407,55 @@ public static class HospitalRoutes
             .Select(x => new { x.Id, x.Code, x.Name, x.Department, x.DepartmentId, x.Price }).ToListAsync());
     }
 
-    private static async Task<IResult> AddCashDesk(CreateDeskRequest input, HospitalDbContext db, ClaimsPrincipal staff)
-    {
-        Guid dept = DepartmentScope.ForNewRecord(staff, input.DepartmentId);
-        if (!await db.Departments.AnyAsync(x => x.Id == dept && x.IsActive)) throw new DomainException("القسم غير متاح.");
-        var desk = new CashDesk { Name = ValidText(input.Name, "اسم الصندوق", 80), DepartmentId = dept };
-        db.CashDesks.Add(desk);
-        db.AuditEvents.Add(Audit(staff, "cashdesk.create", "cashdesk", desk.Id, dept));
-        await db.SaveChangesAsync();
-        return Results.Created($"/api/cash-desks/{desk.Id}", desk);
-    }
+
+    private static IResult AddCashDesk(CreateDeskRequest input, HospitalDbContext db, ClaimsPrincipal staff) =>
+        Results.Problem(statusCode: 400, title:
+            "الصناديق شخصية وتنشأ مع المستخدمين. لتجهيز صندوق مستخدم قديم استخدم أمر إدارة المستخدمين.");
 
     private static async Task<IResult> ListCashDesks(HospitalDbContext db, ClaimsPrincipal staff)
     {
-        bool global = DepartmentClaims.HasGlobalScope(staff); Guid? own = DepartmentClaims.Department(staff);
+        bool showAll = DepartmentClaims.IsOwner(staff) ||
+            DepartmentClaims.HasPermission(staff, HospitalPermissions.DesksReadAll);
+        bool global = DepartmentClaims.HasGlobalScope(staff);
+        Guid? own = DepartmentClaims.Department(staff);
+        Guid me = CurrentStaff.Id(staff);
         return Results.Ok(await db.CashDesks.AsNoTracking()
-            .Where(x => x.IsActive && (global || (own != null && x.DepartmentId == own)))
+            .Where(x => x.IsActive && x.OwnerUserId != null &&
+                (global || (own != null && x.DepartmentId == own)) &&
+                (showAll || x.OwnerUserId == me))
             .OrderBy(x => x.Name)
-            .Select(x => new { x.Id, x.Name, x.DepartmentId }).ToListAsync());
+            .Select(x => new { x.Id, x.Name, x.DepartmentId, x.OwnerUserId }).ToListAsync());
+    }
+
+    private static async Task<IResult> MyCashDeskSummary(HospitalDbContext db, ClaimsPrincipal staff)
+    {
+        Guid me = CurrentStaff.Id(staff);
+        Guid? departmentId = DepartmentClaims.Department(staff);
+        var desk = await db.CashDesks.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.OwnerUserId == me && x.IsActive && x.DepartmentId == departmentId);
+        if (desk is null) return Results.NotFound();
+        var shift = await db.CashShifts.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.CashDeskId == desk.Id && x.CashierId == me && x.ClosedAtUtc == null);
+        if (shift is null) return Results.Ok(new { desk.Id, desk.Name, desk.DepartmentId,
+            ShiftId = (Guid?)null, OpeningCash = 0m, Received = 0m, Spent = 0m, Expected = 0m });
+        decimal received = await db.CashReceipts.Where(x => x.CashShiftId == shift.Id)
+            .SumAsync(x => (decimal?)x.Amount) ?? 0m;
+        decimal spent = await db.CashExpenses.Where(x => x.CashShiftId == shift.Id)
+            .SumAsync(x => (decimal?)x.Amount) ?? 0m;
+        return Results.Ok(new { desk.Id, desk.Name, desk.DepartmentId,
+            ShiftId = (Guid?)shift.Id, shift.OpeningCash, Received = received, Spent = spent,
+            Expected = shift.OpeningCash + received - spent });
     }
 
     private static async Task<IResult> OpenShift(OpenShiftRequest input, HospitalDbContext db, ClaimsPrincipal staff)
     {
         FinanceRules.RequireNonNegativeMoney(input.OpeningCash, "رصيد افتتاح الصندوق");
         var desk = await db.CashDesks.AsNoTracking().FirstOrDefaultAsync(x => x.Id == RequiredId(input.CashDeskId) && x.IsActive);
-        if (desk is null || !DepartmentScope.CanSee(staff, desk.DepartmentId))
-            return Results.NotFound();
+        if (desk is null || !DepartmentScope.CanSee(staff, desk.DepartmentId) ||
+            !CashDeskRules.CanOperate(CurrentStaff.Id(staff), DepartmentClaims.Department(staff),
+                desk.OwnerUserId, desk.DepartmentId, desk.IsActive)) return Results.NotFound();
+        if (await db.CashShifts.AnyAsync(x => x.CashierId == CurrentStaff.Id(staff) && x.ClosedAtUtc == null))
+            throw new DomainException("لديك مناوبة مفتوحة بالفعل.");
         var shift = new CashShift
         { CashDeskId = input.CashDeskId, CashierId = CurrentStaff.Id(staff),
           DepartmentId = desk.DepartmentId, OpeningCash = input.OpeningCash };
@@ -475,14 +588,15 @@ public static class HospitalRoutes
         var previous = await db.CashReceipts.AsNoTracking().FirstOrDefaultAsync(x => x.RequestId == input.RequestId);
         if (previous is not null)
         {
-            if (!DepartmentScope.CanSee(staff, previous.DepartmentId)) return Results.NotFound();
+            if (!DepartmentScope.CanSee(staff, previous.DepartmentId) || previous.ReceivedByUserId != CurrentStaff.Id(staff)) return Results.NotFound();
             if (previous.InvoiceId != input.InvoiceId || previous.CashShiftId != input.ShiftId || previous.Amount != input.Amount)
                 throw new DomainException("معرف العملية مستخدم لتحصيل آخر.");
             return Results.Ok(new { previous.Id, previous.Amount, Repeated = true });
         }
         var shift = await db.CashShifts.FirstOrDefaultAsync(x => x.Id == RequiredId(input.ShiftId));
-        if (shift is null || !DepartmentScope.CanSee(staff, shift.DepartmentId) || shift.ClosedAtUtc is not null || shift.CashierId != CurrentStaff.Id(staff))
-            throw new DomainException("افتح مناوبة صندوق لحسابك أولا.");
+        if (shift is null || !DepartmentScope.CanSee(staff, shift.DepartmentId) || shift.ClosedAtUtc is not null || shift.CashierId != CurrentStaff.Id(staff) ||
+            !await db.CashDesks.AnyAsync(x => x.Id == shift.CashDeskId && x.OwnerUserId == CurrentStaff.Id(staff) && x.IsActive && x.DepartmentId == shift.DepartmentId))
+            throw new DomainException("افتح مناوبة صندوقك الشخصي أولا.");
         if (shift.DepartmentId is null) return Results.NotFound();
         var invoice = await db.Invoices.FirstOrDefaultAsync(x => x.Id == RequiredId(input.InvoiceId));
         if (invoice is null || !DepartmentScope.CanSee(staff, invoice.DepartmentId) ||
@@ -514,15 +628,16 @@ public static class HospitalRoutes
         var previous = await db.CashExpenses.AsNoTracking().FirstOrDefaultAsync(x => x.RequestId == input.RequestId);
         if (previous is not null)
         {
-            if (!DepartmentScope.CanSee(staff, previous.DepartmentId)) return Results.NotFound();
+            if (!DepartmentScope.CanSee(staff, previous.DepartmentId) || previous.CreatedByUserId != CurrentStaff.Id(staff)) return Results.NotFound();
             if (previous.Amount != input.Amount || previous.CashShiftId != input.ShiftId
                 || previous.Category != category || previous.Description != description)
                 throw new DomainException("معرف العملية مستخدم لمصروف آخر.");
             return Results.Ok(new { previous.Id, previous.Amount, Repeated = true });
         }
         var shift = await db.CashShifts.FirstOrDefaultAsync(x => x.Id == RequiredId(input.ShiftId));
-        if (shift is null || !DepartmentScope.CanSee(staff, shift.DepartmentId) || shift.ClosedAtUtc is not null || shift.CashierId != CurrentStaff.Id(staff))
-            throw new DomainException("يجب فتح مناوبة صندوق على الحساب نفسه قبل تسجيل مصروف نقدي.");
+        if (shift is null || !DepartmentScope.CanSee(staff, shift.DepartmentId) || shift.ClosedAtUtc is not null || shift.CashierId != CurrentStaff.Id(staff) ||
+            !await db.CashDesks.AnyAsync(x => x.Id == shift.CashDeskId && x.OwnerUserId == CurrentStaff.Id(staff) && x.IsActive && x.DepartmentId == shift.DepartmentId))
+            throw new DomainException("يجب فتح مناوبة صندوقك الشخصي قبل الصرف.");
         if (shift.DepartmentId is null) return Results.NotFound();
         decimal receiptsInShift = await db.CashReceipts.Where(x => x.CashShiftId == shift.Id)
             .SumAsync(x => (decimal?)x.Amount) ?? 0m;
@@ -582,7 +697,8 @@ public static class HospitalRoutes
     }
 
     public sealed record LoginRequest(string Username, string Password);
-    public sealed record CreateDepartmentRequest(string Code, string Name);
+    public sealed record CreateDepartmentRequest(string Code, string Name, int MaxActiveUsers = 20);
+    public sealed record DepartmentLimitRequest(int MaxActiveUsers);
     public sealed record CreateUserRequest(string Username, string FullName, string Password, string Role,
         Guid? DepartmentId, bool AllDepartments, List<string>? Permissions);
     public sealed record UpdateUserRequest(string FullName, string Role, Guid? DepartmentId,
