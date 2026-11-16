@@ -5,10 +5,10 @@ BASE="${MIZAN_TEST_URL:-http://127.0.0.1:5081}"
 : "${MIZAN_TEST_ADMIN_USERNAME:?Set test username}"
 : "${MIZAN_TEST_ADMIN_PASSWORD:?Set test password}"
 assert_eq() { [[ "$1" == "$2" ]] || { echo "FAIL expected=$2 got=$1" >&2; exit 1; }; }
-request() { curl --silent --show-error --fail-with-body -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" -X "$1" "$BASE/api/$2" -d "${3:-{}}"; }
+request() { curl --silent --show-error --fail-with-body -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" -X "$1" "$BASE/api/$2" -d "$3"; }
 post() { request POST "$1" "$2"; }
 get() { curl --silent --show-error --fail-with-body -H "Authorization: Bearer $TOKEN" "$BASE/api/$1"; }
-status() { curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Authorization: Bearer $1" -X "$2" "$BASE/api/$3" -d "${4:-{}}"; }
+status() { curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Authorization: Bearer $1" -X "$2" "$BASE/api/$3" -d "$4"; }
 login() {
   curl --fail-with-body --silent --show-error -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" \
     -d "$(jq -n --arg u "$1" --arg p "$2" '{username:$u,password:$p}')" | jq -r .token
