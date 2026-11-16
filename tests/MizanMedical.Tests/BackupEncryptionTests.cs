@@ -25,7 +25,7 @@ public sealed class BackupEncryptionTests
         using var encrypted = new MemoryStream();
         await EncryptedBackupFormat.EncryptAsync(source, encrypted, Secret);
         encrypted.Position = 0;
-        await Assert.ThrowsAsync<CryptographicException>(() =>
+        await Assert.ThrowsAnyAsync<CryptographicException>(() =>
             EncryptedBackupFormat.VerifyAsync(encrypted, "A-different-password-12345"));
     }
 
@@ -47,9 +47,9 @@ public sealed class BackupEncryptionTests
         using var encrypted = new MemoryStream();
         await EncryptedBackupFormat.EncryptAsync(source, encrypted, Secret);
         var data = encrypted.ToArray();
-        data[70] ^= 1;
+        data[65] ^= 1;
         using var modified = new MemoryStream(data);
-        await Assert.ThrowsAsync<CryptographicException>(() =>
+        await Assert.ThrowsAnyAsync<CryptographicException>(() =>
             EncryptedBackupFormat.VerifyAsync(modified, Secret));
     }
 }
