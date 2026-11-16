@@ -40,9 +40,11 @@ PATIENT=$(jq -r .id <<< "$patient"); SERVICE=$(jq -r .id <<< "$service")
 TOKEN_OWNER="$TOKEN"
 cashierName="cashier$RANDOM$RANDOM"
 cashierPass="cashier-password-12345!"
-cashier=$(post users "$(jq -n --arg u "$cashierName" --arg d "$WARD" --arg pw "$cashierPass" '{username:$u,fullName:"أمين صندوق",password:$pw,role:"Cashier",departmentId:$d,allDepartments:false,permissions:["desks.read","shifts.open","shifts.read","shifts.close","receipts.create","expenses.create"]}')")
+cashier=$(post users "$(jq -n --arg u "$cashierName" --arg d "$WARD" --arg pw "$cashierPass" '{username:$u,fullName:"أمين صندوق",password:$pw,role:"Cashier",departmentId:$d,allDepartments:false,permissions:["desks.read","shifts.open","shifts.read","shifts.close","invoices.read","receipts.create","expenses.create"]}')")
 CASHIER_ID=$(jq -r .id <<< "$cashier")
 TOKEN_CASHIER=$(login "$cashierName" "$cashierPass")
+# Never accept a user whose write permission is unusable because required read grants are absent.
+assert_eq "$(status "$TOKEN_OWNER" POST users "$(jq -n --arg u "unsafe$RANDOM$RANDOM" --arg d "$LAB" '{username:$u,fullName:"تعذر",password:"strong-test-password-2026!",role:"Cashier",departmentId:$d,allDepartments:false,permissions:["receipts.create"]}')")" 400
 TOKEN="$TOKEN_CASHIER"
 cashierContext=$(get auth/me)
 assert_eq "$(jq -r .role <<< "$cashierContext")" Cashier
