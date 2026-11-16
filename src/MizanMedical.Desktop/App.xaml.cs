@@ -41,8 +41,8 @@ public partial class App : Application
         {
             // Headless, real Windows executable smoke. It loads all login-window
             // resources but never contacts PostgreSQL or requires a running API.
-            StartupUri = null;
-            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            // Do not assign StartupUri = null: WPF rejects null immediately.
+            // Environment.Exit terminates the smoke before StartupUri is used.
             string? path = Environment.GetEnvironmentVariable("MIZAN_STARTUP_PROBE_FILE");
             try
             {
