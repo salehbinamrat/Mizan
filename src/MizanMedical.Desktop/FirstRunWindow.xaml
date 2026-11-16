@@ -1,8 +1,8 @@
 <Window x:Class="MizanMedical.Desktop.FirstRunWindow" 
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ميزان الطبي — التهيئة الأولى للمسؤول" Width="640" Height="780"
-        MinWidth="640" MinHeight="780" ResizeMode="NoResize"
+        Title="ميزان الطبي — التهيئة الأولى للمسؤول" Width="640" Height="700"
+        MinWidth="610" MinHeight="600" ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner" FlowDirection="RightToLeft"
         Background="{StaticResource MedicalCanvas}" FontFamily="Segoe UI">
     <Grid Margin="24">
