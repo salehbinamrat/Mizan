@@ -25,6 +25,7 @@
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="اسم الدخول" Binding="{Binding Username}" Width="*"/>
                             <DataGridTextColumn Header="الاسم" Binding="{Binding FullName}" Width="2*"/>
+                            <DataGridTextColumn Header="القسم" Binding="{Binding DepartmentName}" Width="130"/>
                             <DataGridCheckBoxColumn Header="نشط" Binding="{Binding IsActive}" Width="65"/>
                         </DataGrid.Columns>
                     </DataGrid>
@@ -68,12 +69,16 @@
                             <Button Content="تحديث" Click="Refresh_Click"/>
                         </WrapPanel>
                         <Separator Margin="0,12"/>
+                        <TextBlock Text="حد المستخدمين النشطين لكل قسم" FontSize="16" FontWeight="Bold" Margin="0,0,0,7"/>
+                        <WrapPanel Margin="0,0,0,10"><ComboBox x:Name="LimitDepartmentCombo" DisplayMemberPath="Name" SelectedValuePath="Id" Width="210" SelectionChanged="LimitDepartment_SelectionChanged"/><TextBox x:Name="DepartmentLimitBox" Width="80" Text="20" FlowDirection="LeftToRight"/><Button Content="تحديث الحد" Click="UpdateDepartmentLimit_Click"/></WrapPanel>
                         <TextBlock Text="إضافة قسم جديد" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
                         <WrapPanel>
                             <TextBox x:Name="DepartmentCodeBox" Width="90" FlowDirection="LeftToRight" ToolTip="رمز القسم مثل LAB"/>
-                            <TextBox x:Name="DepartmentNameBox" Width="210" ToolTip="اسم القسم بالعربية"/>
+                            <TextBox x:Name="DepartmentNameBox" Width="190" ToolTip="اسم القسم بالعربية"/><TextBox x:Name="NewDepartmentLimitBox" Width="65" Text="20" FlowDirection="LeftToRight" ToolTip="عدد المستخدمين المسموح"/>
                             <Button Content="إضافة قسم" Click="AddDepartment_Click"/>
                         </WrapPanel>
+                        <Button Content="تهيئة صندوق خاص للمستخدم المحدد (الحسابات القديمة)" Click="ProvisionDesk_Click" Margin="0,12,0,0" HorizontalAlignment="Right" Background="#397B74"/>
+                        <TextBlock Text="لكل موظف مرتبط بقسم صندوق نقدي مستقل يُنشأ آليا؛ مسؤولو جميع الأقسام للرقابة فقط." TextWrapping="Wrap" Foreground="#58717B" Margin="0,8"/>
                         <TextBlock x:Name="StatusText" TextWrapping="Wrap" Foreground="#325F6E" Margin="0,14,0,0"/>
                     </StackPanel>
                 </ScrollViewer>

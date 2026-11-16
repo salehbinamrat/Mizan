@@ -53,6 +53,7 @@ public sealed class HospitalApi
     public Task<List<PatientDto>> Patients() => Get<List<PatientDto>>("api/patients");
     public Task<List<ServiceDto>> Services() => Get<List<ServiceDto>>("api/services");
     public Task<List<InvoiceDto>> Invoices() => Get<List<InvoiceDto>>("api/invoices");
+    public Task<PersonalDeskSummaryDto> MyCashDeskSummary() => Get<PersonalDeskSummaryDto>("api/cash-desks/mine/summary");
     public Task<List<CashDeskDto>> CashDesks() => Get<List<CashDeskDto>>("api/cash-desks");
     public Task<List<CashShiftDto>> OpenShifts() => Get<List<CashShiftDto>>("api/shifts/open");
     public Task<DailyReportDto> Daily(DateOnly date) => Get<DailyReportDto>("api/reports/daily?day=" + date.ToString("yyyy-MM-dd"));
@@ -99,7 +100,8 @@ public sealed class HospitalApi
 
 public sealed record LoginUser(Guid Id, string Username, string FullName, string Role,
     Guid? DepartmentId, bool AllDepartments, bool IsSystemOwner, List<string> Permissions);
-public sealed record DepartmentDto(Guid Id, string Code, string Name);
+public sealed record DepartmentDto(Guid Id, string Code, string Name, int MaxActiveUsers);
+public sealed record DepartmentCapacityDto(Guid Id, int MaxActiveUsers, int ActiveUsers);
 public sealed record StaffUserDto(Guid Id, string Username, string FullName, string Role,
     bool IsActive, bool IsSystemOwner, Guid? DepartmentId, bool AllDepartments,
     List<string> Permissions);
@@ -126,3 +128,6 @@ public sealed record DailyReportDto(string Day, string Currency, int InvoiceCoun
 public sealed record IdResult(Guid Id);
 public sealed record InvoiceCreated(Guid Id, string InvoiceNumber, decimal Total, decimal Paid);
 public sealed record ShiftClosed(Guid Id, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Variance, DateTime ClosedAtUtc);
+
+public sealed record PersonalDeskSummaryDto(Guid Id, string Name, Guid? DepartmentId, Guid? ShiftId,
+    decimal OpeningCash, decimal Received, decimal Spent, decimal Expected);

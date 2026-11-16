@@ -45,7 +45,7 @@ public partial class MainWindow : Window
         CashTab.Visibility = CanShift || Has("desks.read") ? Visibility.Visible : Visibility.Collapsed;
         ReceiptsTab.Visibility = Has("receipts.create") ? Visibility.Visible : Visibility.Collapsed;
         ExpensesTab.Visibility = Has("expenses.create") ? Visibility.Visible : Visibility.Collapsed;
-        DeskGroup.Visibility = Has("desks.manage") ? Visibility.Visible : Visibility.Collapsed;
+        // Cash desks are created automatically with accounts, not through a free-form form.
         ManageUsersGroup.Visibility = Has("users.manage") ? Visibility.Visible : Visibility.Collapsed;
         AdminTab.Visibility = IsAdmin ? Visibility.Visible : Visibility.Collapsed;
     }
@@ -78,7 +78,19 @@ public partial class MainWindow : Window
             InvoicesGrid.ItemsSource = invoices;
             ReceiptInvoiceCombo.ItemsSource = invoices.Where(i => i.Balance > 0m).ToList();
         }
-        if (Has("desks.read")) OpenDeskCombo.ItemsSource = await App.Api.CashDesks();
+        if (Has("desks.read"))
+        {
+            OpenDeskCombo.ItemsSource = await App.Api.CashDesks();
+            try
+            {
+                var desk = await App.Api.MyCashDeskSummary();
+                PersonalDeskSummaryText.Text = $"صندوقي: {desk.Name} | افتتاح: {desk.OpeningCash:N2} | قبض: {desk.Received:N2} | صرف: {desk.Spent:N2} | الرصيد المتوقع: {desk.Expected:N2}";
+            }
+            catch (InvalidOperationException)
+            {
+                PersonalDeskSummaryText.Text = "لا يوجد صندوق شخصي لهذا الحساب؛ راجع مدير البرنامج.";
+            }
+        }
         if (Has("shifts.read"))
         {
             var shifts = await App.Api.OpenShifts();
@@ -275,14 +287,6 @@ public partial class MainWindow : Window
         _pendingExpenseId = Guid.NewGuid();
         await RefreshAll();
         StatusLabel.Text = "تم تسجيل سند الصرف وترحيله إلى الحسابات.";
-    });
-
-    private async void AddDesk_Click(object sender, RoutedEventArgs e) => await Perform(async () =>
-    {
-        await App.Api.Post<IdResult>("api/cash-desks", new { Name = NewDeskBox.Text.Trim(), DepartmentId = SelectedDepartment() });
-        NewDeskBox.Clear();
-        await RefreshAll();
-        StatusLabel.Text = "تم إنشاء الصندوق.";
     });
 
     private void ManageUsers_Click(object sender, RoutedEventArgs e)

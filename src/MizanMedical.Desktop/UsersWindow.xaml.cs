@@ -19,8 +19,8 @@ public partial class UsersWindow : Window
         ["patients.create"] = "المرضى — إضافة",
         ["services.read"] = "الخدمات والأسعار — عرض",
         ["services.manage"] = "الخدمات والأسعار — إضافة وتعديل",
-        ["desks.read"] = "الصناديق — عرض",
-        ["desks.manage"] = "الصناديق — إنشاء وإدارة",
+        ["desks.read"] = "صندوقي — عرض",
+        ["desks.read.all"] = "الاطلاع على بقية صناديق القسم المسموح",
         ["shifts.read"] = "المناوبات — عرض",
         ["shifts.open"] = "المناوبات — فتح",
         ["shifts.close"] = "المناوبات — إقفال",
@@ -57,11 +57,15 @@ public partial class UsersWindow : Window
         {
             _departments = await App.Api.Departments();
             DepartmentCombo.ItemsSource = _departments;
+            LimitDepartmentCombo.ItemsSource = _departments;
+            LimitDepartmentCombo.SelectedIndex = _departments.Count > 0 ? 0 : -1;
             string[] catalog = (await App.Api.PermissionCatalog()).ToArray();
             _grants.Clear();
             foreach (string key in catalog)
                 if (Labels.TryGetValue(key, out var label)) _grants.Add(new GrantOption(key, label));
-            UsersGrid.ItemsSource = await App.Api.Users();
+            var users = await App.Api.Users();
+            UsersGrid.ItemsSource = users.Select(u => new StaffUserDisplay(u,
+                _departments.FirstOrDefault(d => d.Id == u.DepartmentId)?.Name ?? (u.AllDepartments ? "جميع الأقسام" : "—"))).ToList();
             ResetForm();
             StatusText.Text = "يمكنك إنشاء حساب لكل قسم وتحديد صلاحياته مستقلة عن الدور الوظيفي.";
         }
@@ -91,7 +95,8 @@ public partial class UsersWindow : Window
 
     private void UsersGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (_loading || UsersGrid.SelectedItem is not StaffUserDto user) return;
+        if (_loading || UsersGrid.SelectedItem is not StaffUserDisplay display) return;
+        var user = display.User;
         if (user.IsSystemOwner)
         {
             ResetForm();
@@ -167,10 +172,48 @@ public partial class UsersWindow : Window
     private async void AddDepartment_Click(object sender, RoutedEventArgs e) => await Do(async () =>
     {
         await App.Api.Post<IdResult>("api/departments", new
-        { Code = DepartmentCodeBox.Text.Trim(), Name = DepartmentNameBox.Text.Trim() });
+        { Code = DepartmentCodeBox.Text.Trim(), Name = DepartmentNameBox.Text.Trim(),
+          MaxActiveUsers = UserLimit(NewDepartmentLimitBox.Text) });
         DepartmentCodeBox.Clear(); DepartmentNameBox.Clear();
         await Refresh();
     });
+
+    private void LimitDepartment_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (LimitDepartmentCombo.SelectedItem is DepartmentDto department)
+            DepartmentLimitBox.Text = department.MaxActiveUsers.ToString();
+    }
+
+    private static int UserLimit(string input)
+    {
+        if (!int.TryParse(input, out int limit) || limit is < 1 or > 10000)
+            throw new InvalidOperationException("عدد المستخدمين يجب أن يكون بين 1 و10000.");
+        return limit;
+    }
+
+    private async void UpdateDepartmentLimit_Click(object sender, RoutedEventArgs e) => await Do(async () =>
+    {
+        if (LimitDepartmentCombo.SelectedValue is not Guid id)
+            throw new InvalidOperationException("اختر القسم.");
+        await App.Api.Put<DepartmentCapacityDto>($"api/departments/{id}/limit",
+            new { MaxActiveUsers = UserLimit(DepartmentLimitBox.Text) });
+        await Refresh();
+        StatusText.Text = "تم تعديل العدد الأعلى للمستخدمين النشطين.";
+    });
+
+    private async void ProvisionDesk_Click(object sender, RoutedEventArgs e) => await Do(async () =>
+    {
+        if (_editingId is not Guid id) throw new InvalidOperationException("حدد الموظف أولا.");
+        await App.Api.Post<IdResult>($"api/users/{id}/personal-desk", new { });
+        StatusText.Text = "تم التحقق من تخصيص صندوق المستخدم.";
+    });
+
+    public sealed record StaffUserDisplay(StaffUserDto User, string DepartmentName)
+    {
+        public string Username => User.Username;
+        public string FullName => User.FullName;
+        public bool IsActive => User.IsActive;
+    }
 
     private async Task Do(Func<Task> action)
     {
