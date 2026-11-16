@@ -434,6 +434,18 @@ public partial class MainWindow : Window
         new UsersWindow { Owner = this }.ShowDialog();
     }
 
+    private async void ChangePassword_Click(object sender, RoutedEventArgs e)
+    {
+        var change = new ChangePasswordWindow { Owner = this };
+        if (change.ShowDialog() != true) return;
+        try { await App.Api.Logout(); }
+        catch { /* The password change already revoked this session on the server. */ }
+        var login = new LoginWindow();
+        Application.Current.MainWindow = login;
+        login.Show();
+        Close();
+    }
+
     private async void Logout_Click(object sender, RoutedEventArgs e)
     {
         try { await App.Api.Logout(); }

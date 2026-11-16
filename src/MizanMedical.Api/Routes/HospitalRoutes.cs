@@ -29,6 +29,7 @@ public static class HospitalRoutes
             Permissions = HospitalPermissions.All.Where(p => DepartmentClaims.HasPermission(staff, p)).ToArray()
         }));
         secured.MapPost("/auth/logout", Logout);
+        secured.MapPost("/auth/change-password", ChangeOwnPassword).RequireRateLimiting("login");
         secured.MapGet("/permissions/catalog", () => Results.Ok(HospitalPermissions.All))
             .RequireAuthorization(HospitalPermissions.UsersManage);
         secured.MapPost("/departments", AddDepartment).RequireAuthorization(HospitalPermissions.DepartmentsManage);
@@ -132,6 +133,25 @@ public static class HospitalRoutes
         string token = request.Headers.Authorization.ToString()[7..].Trim();
         string hash = PasswordSecurity.HashToken(token);
         await db.LoginSessions.Where(x => x.TokenSha256 == hash).ExecuteDeleteAsync();
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> ChangeOwnPassword(ChangePasswordRequest input,
+        HospitalDbContext db, ClaimsPrincipal staff)
+    {
+        PasswordChangeRules.Validate(input.CurrentPassword, input.NewPassword, input.ConfirmPassword);
+        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        Guid id = CurrentStaff.Id(staff);
+        var user = await db.StaffUsers.FirstOrDefaultAsync(x => x.Id == id && x.IsActive);
+        if (user is null || !PasswordSecurity.Verify(input.CurrentPassword!, user.PasswordHash, user.PasswordSalt))
+            return Results.Unauthorized();
+        var (hash, salt) = PasswordSecurity.Create(input.NewPassword!);
+        user.PasswordHash = hash;
+        user.PasswordSalt = salt;
+        await db.LoginSessions.Where(x => x.StaffUserId == id).ExecuteDeleteAsync();
+        db.AuditEvents.Add(Audit(staff, "user.password.self_change", "user", id));
+        await db.SaveChangesAsync();
+        await trx.CommitAsync();
         return Results.NoContent();
     }
 
@@ -735,6 +755,7 @@ public static class HospitalRoutes
 
     public sealed record BackupRequest(string Passphrase);
     public sealed record LoginRequest(string Username, string Password);
+    public sealed record ChangePasswordRequest(string? CurrentPassword, string? NewPassword, string? ConfirmPassword);
     public sealed record CreateDepartmentRequest(string Code, string Name, int MaxActiveUsers = 20);
     public sealed record DepartmentLimitRequest(int MaxActiveUsers);
     public sealed record CreateUserRequest(string Username, string FullName, string Password, string Role,
