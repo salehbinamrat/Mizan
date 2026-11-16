@@ -16,6 +16,7 @@ string connectionString = Environment.GetEnvironmentVariable("MIZAN_DB_CONNECTIO
     ?? throw new InvalidOperationException("MIZAN_DB_CONNECTION must be configured with a central PostgreSQL database.");
 
 builder.Services.AddDbContext<HospitalDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddHostedService<ExpiredSessionCleanupService>();
 builder.Services.AddSingleton<InitialOwnerSetupState>();
 builder.Services.AddAuthentication("Session").AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>("Session", _ => { });
 builder.Services.AddAuthorization(options =>
