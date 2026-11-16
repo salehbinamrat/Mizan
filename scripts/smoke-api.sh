@@ -22,19 +22,29 @@ login() {
 TOKEN=$(login "$MIZAN_TEST_ADMIN_USERNAME" "$MIZAN_TEST_ADMIN_PASSWORD")
 [[ ${#TOKEN} == 64 ]] || { echo 'Authentication token missing'; exit 1; }
 seed="$(date +%s)-$RANDOM"
-ward=$(post departments "$(jq -n --arg code "A$RANDOM" '{code:$code,name:"الطوارئ"}')")
+ward=$(post departments "$(jq -n --arg code "A$RANDOM" '{code:$code,name:"الطوارئ",maxActiveUsers:2}')")
 lab=$(post departments "$(jq -n --arg code "B$RANDOM" '{code:$code,name:"المختبر"}')")
 WARD=$(jq -r .id <<< "$ward"); LAB=$(jq -r .id <<< "$lab")
 patient=$(post patients "$(jq -n --arg n "$seed" --arg d "$WARD" '{fileNumber:("F-"+$n),fullName:"مريض الطوارئ",departmentId:$d}')")
 service=$(post services "$(jq -n --arg n "$seed" --arg d "$WARD" '{code:("S-"+$n),name:"كشف الطوارئ",department:"",price:80,departmentId:$d}')")
-desk=$(post cash-desks "$(jq -n --arg n "$seed" --arg d "$WARD" '{name:("صندوق اختبار "+$n),departmentId:$d}')")
-PATIENT=$(jq -r .id <<< "$patient"); SERVICE=$(jq -r .id <<< "$service"); DESK=$(jq -r .id <<< "$desk")
+PATIENT=$(jq -r .id <<< "$patient"); SERVICE=$(jq -r .id <<< "$service")
+TOKEN_OWNER="$TOKEN"
+cashierName="cashier$RANDOM$RANDOM"
+cashierPass="cashier-password-12345!"
+cashier=$(post users "$(jq -n --arg u "$cashierName" --arg d "$WARD" --arg pw "$cashierPass" '{username:$u,fullName:"أمين صندوق",password:$pw,role:"Cashier",departmentId:$d,allDepartments:false,permissions:["desks.read","shifts.open","shifts.read","shifts.close","receipts.create","expenses.create"]}')")
+CASHIER_ID=$(jq -r .id <<< "$cashier")
+TOKEN_CASHIER=$(login "$cashierName" "$cashierPass")
+TOKEN="$TOKEN_CASHIER"
+desk=$(get cash-desks | jq '.[0]'); DESK=$(jq -r .id <<< "$desk")
+assert_eq "$(jq -r .ownerUserId <<< "$desk")" "$CASHIER_ID"
 shift=$(post shifts/open "$(jq -n --arg id "$DESK" '{cashDeskId:$id,openingCash:100}')")
 SHIFT=$(jq -r .id <<< "$shift")
 invoicePayload=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg p "$PATIENT" --arg s "$SERVICE" '{requestId:$k,patientId:$p,lines:[{serviceId:$s,quantity:1}]}')
+TOKEN="$TOKEN_OWNER"
 invoice=$(post invoices "$invoicePayload"); INVOICE=$(jq -r .id <<< "$invoice")
 assert_eq "$(jq -r .total <<< "$invoice")" 80
 assert_eq "$(jq -r .repeated <<< "$(post invoices "$invoicePayload")")" true
+TOKEN="$TOKEN_CASHIER"
 receiptPayload=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg i "$INVOICE" --arg s "$SHIFT" '{requestId:$k,invoiceId:$i,shiftId:$s,amount:50}')
 assert_eq "$(jq -r .invoiceBalance <<< "$(post receipts "$receiptPayload")")" 30
 assert_eq "$(jq -r .repeated <<< "$(post receipts "$receiptPayload")")" true
@@ -43,6 +53,7 @@ assert_eq "$(status "$TOKEN" POST receipts "$badPayment")" 400
 expensePayload=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg s "$SHIFT" '{requestId:$k,shiftId:$s,category:"اختبار",description:"مصروف تجريبي",amount:10}')
 post expenses "$expensePayload" >/dev/null
 # A second department with independent patient/service/invoice.
+TOKEN="$TOKEN_OWNER"
 patientB=$(post patients "$(jq -n --arg n "$seed" --arg d "$LAB" '{fileNumber:("L-"+$n),fullName:"مريض المختبر",departmentId:$d}')")
 serviceB=$(post services "$(jq -n --arg n "$seed" --arg d "$LAB" '{code:("L-"+$n),name:"تحليل",department:"",price:99,departmentId:$d}')")
 patientBId=$(jq -r .id <<< "$patientB"); serviceBId=$(jq -r .id <<< "$serviceB")
@@ -50,9 +61,17 @@ invoiceB=$(post invoices "$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" 
 INVOICE_B=$(jq -r .id <<< "$invoiceB")
 nameA="ward$RANDOM$RANDOM"
 PASS='ward-only-password-12345!'
-created=$(post users "$(jq -n --arg u "$nameA" --arg d "$WARD" --arg pw "$PASS" '{username:$u,fullName:"مسؤول قسم الطوارئ",password:$pw,role:"DepartmentManager",departmentId:$d,allDepartments:false,permissions:["patients.read","patients.create","invoices.read","invoices.issue","services.read","reports.read"]}')")
+created=$(post users "$(jq -n --arg u "$nameA" --arg d "$WARD" --arg pw "$PASS" '{username:$u,fullName:"مسؤول قسم الطوارئ",password:$pw,role:"DepartmentManager",departmentId:$d,allDepartments:false,permissions:["patients.read","patients.create","invoices.read","invoices.issue","services.read","reports.read","shifts.open","desks.read"]}')")
 USER_A=$(jq -r .id <<< "$created")
 TOKEN_A=$(login "$nameA" "$PASS")
+# Same-department coworker must not operate another cashier's box.
+assert_eq "$(status "$TOKEN_A" POST shifts/open "$(jq -n --arg d "$DESK" '{cashDeskId:$d,openingCash:0}')")" 404
+TOKEN="$TOKEN_A"
+assert_eq "$(get cash-desks | jq 'length')" 1
+if [[ "$(get cash-desks | jq -r '.[0].id')" == "$DESK" ]]; then echo 'Cross-user cash desk leaked' >&2; exit 1; fi
+TOKEN="$TOKEN_OWNER"
+# A third active staff member exceeds this department's limit.
+assert_eq "$(status "$TOKEN_OWNER" POST users "$(jq -n --arg u "extra$RANDOM" --arg d "$WARD" '{username:$u,fullName:"زيادة",password:"test-password-12345!",role:"Cashier",departmentId:$d,allDepartments:false,permissions:["desks.read"]}')")" 400
 TOKEN_OWNER="$TOKEN"; TOKEN="$TOKEN_A"
 assert_eq "$(get patients | jq 'length')" 1
 assert_eq "$(get invoices | jq 'length')" 1
@@ -81,9 +100,11 @@ request PUT "users/$USER_A" "$(jq -n --arg d "$WARD" '{fullName:"مسؤول ال
 assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_A" "$BASE/api/patients")" 401
 TOKEN_A_NEW=$(login "$nameA" "$PASS")
 assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_A_NEW" "$BASE/api/invoices")" 403
+TOKEN="$TOKEN_CASHIER"
 close=$(post shifts/close "$(jq -n --arg s "$SHIFT" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
 assert_eq "$(jq -r .expectedCash <<< "$close")" 140
 assert_eq "$(jq -r .variance <<< "$close")" 0
+TOKEN="$TOKEN_OWNER"
 request POST auth/logout '{}' >/dev/null || true
 assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_OWNER" "$BASE/api/audit/recent")" 401
 printf 'PASS: department scoping, cross-department 404/403, explicit permission grants, revoked sessions, general manager scope, receipts and shift financial posting\n'
