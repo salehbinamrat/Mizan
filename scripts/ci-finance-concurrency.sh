@@ -103,7 +103,7 @@ expenseB="$(jq -n --arg k "$EXP_B" --arg s "$SHIFT" '{requestId:$k,shiftId:$s,ca
 concurrent_pair expenses "$CASHIER" "$expenseA" "$expenseB" expense
 expect_one_success expense 201
 assert_eq "$(sql_count "SELECT count(*) FROM \"CashExpenses\" WHERE \"CashShiftId\"='$SHIFT'")" 1
-assert_eq "$(sql_count "SELECT coalesce(sum(\"Amount\"),0) FROM \"CashExpenses\" WHERE \"CashShiftId\"='$SHIFT'")" 110
+assert_eq "$(sql_count "SELECT coalesce(sum(\"Amount\"),0) FROM \"CashExpenses\" WHERE \"CashShiftId\"='$SHIFT'")" 110.00
 assert_eq "$(sql_count "SELECT count(*) FROM \"JournalEntries\" WHERE \"ReferenceType\"='expense' AND \"ReferenceId\" IN (SELECT \"Id\" FROM \"CashExpenses\" WHERE \"CashShiftId\"='$SHIFT')")" 1
 
 # 4: Closing the same shift concurrently must close exactly once.
