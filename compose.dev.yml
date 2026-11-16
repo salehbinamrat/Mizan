@@ -1,0 +1,18 @@
+services:
+  database:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: mizan_medical
+      POSTGRES_USER: mizan_app
+      POSTGRES_PASSWORD: ${MIZAN_POSTGRES_PASSWORD:?Define a strong password in your shell or .env file}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - mizan_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mizan_app -d mizan_medical"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+volumes:
+  mizan_db:
