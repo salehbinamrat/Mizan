@@ -96,22 +96,25 @@ public static class HospitalRoutes
         };
     }
 
-    private static async Task<IResult> Login(LoginRequest request, HospitalDbContext db)
+    private static async Task<IResult> Login(LoginRequest request, HospitalDbContext db, ILoggerFactory loggerFactory)
     {
         string username = (request.Username ?? "").Trim().ToLowerInvariant();
         if (username.Length is < 3 or > 80 || request.Password is null)
             return Results.Unauthorized();
         var user = await db.StaffUsers.FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
-        if (user is null || (user.LockedUntilUtc.HasValue && user.LockedUntilUtc > DateTime.UtcNow))
+        var now = DateTime.UtcNow;
+        if (user is null || LoginFailurePolicy.IsAccountLocked(user.IsSystemOwner, user.LockedUntilUtc, now))
             return Results.Unauthorized();
         if (!PasswordSecurity.Verify(request.Password, user.PasswordHash, user.PasswordSalt))
         {
-            user.FailedLogins++;
-            if (user.FailedLogins >= 5)
-            {
-                user.LockedUntilUtc = DateTime.UtcNow.AddMinutes(15);
-                user.FailedLogins = 0;
-            }
+            var failure = LoginFailurePolicy.NextFailure(user.IsSystemOwner, user.FailedLogins, now);
+            user.FailedLogins = failure.FailedLogins;
+            user.LockedUntilUtc = failure.LockedUntilUtc;
+            // The original owner is irreplaceable; do not let five malicious login
+            // requests block all administrative access for 15 minutes.
+            if (user.IsSystemOwner)
+                loggerFactory.CreateLogger("Authentication").LogWarning(
+                    "Rejected login attempt against original owner account {StaffId}", user.Id);
             await db.SaveChangesAsync();
             return Results.Unauthorized();
         }
