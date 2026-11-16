@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using MizanMedical.Domain;
 
 namespace MizanMedical.Desktop;
 
@@ -136,6 +137,20 @@ public partial class UsersWindow : Window
         Guid? departmentId = global ? null : DepartmentCombo.SelectedValue is Guid id ? id : null;
         string role = RoleCombo.SelectedValue as string ?? throw new InvalidOperationException("حدد الدور الوظيفي.");
         string[] permissions = _grants.Where(g => g.Selected).Select(g => g.Key).ToArray();
+        var prerequisites = PermissionPrerequisiteRules.Missing(permissions);
+        if (prerequisites.Count > 0)
+        {
+            string labels = string.Join("\n", prerequisites.Select(x =>
+                "• " + (Labels.TryGetValue(x, out var label) ? label : x)));
+            if (MessageBox.Show(this,
+                    "الوظائف المختارة تحتاج صلاحيات قراءة إضافية للعمل بشكل صحيح:\n" +
+                    labels + "\n\nهل توافق على منح هذه الصلاحيات لهذا المستخدم؟",
+                    "تأكيد متطلبات الصلاحيات", MessageBoxButton.YesNo,
+                    MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+            permissions = permissions.Concat(prerequisites).Distinct(StringComparer.Ordinal).ToArray();
+            foreach (var grant in _grants)
+                if (prerequisites.Contains(grant.Key, StringComparer.Ordinal)) grant.Selected = true;
+        }
         if (!global && departmentId is null) throw new InvalidOperationException("اختر قسم الموظف.");
         if (_editingId is Guid userId)
         {
