@@ -10,7 +10,9 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 login() {
-  curl --fail-with-body --silent --show-error --max-time 30 \
+  # CI-only source-loopback alias isolates this test's login rate-limit bucket
+  # from the prior auth regression suite; production rate limits are unchanged.
+  curl --interface 127.0.0.2 --fail-with-body --silent --show-error --max-time 30 \
     -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
     -d "$(jq -n --arg u "$1" --arg p "$2" '{username:$u,password:$p}')" | jq -r .token
 }
