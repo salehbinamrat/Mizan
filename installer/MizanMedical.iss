@@ -7,6 +7,9 @@
 #ifndef OutputDir
   #error OutputDir must be defined by /DOutputDir
 #endif
+#ifndef IconFile
+  #error IconFile must be defined by /DIconFile
+#endif
 
 [Setup]
 AppName=ميزان الطبي
@@ -28,6 +31,7 @@ Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=admin
 WizardStyle=modern
+SetupIconFile={#IconFile}
 UninstallDisplayIcon={app}\MizanMedical.Desktop.exe
 
 [Languages]
@@ -38,8 +42,8 @@ Source: "{#SourceDir}\*"; Excludes: "mizan-client.json"; DestDir: "{app}"; Flags
 Source: "{#SourceDir}\mizan-client.json"; DestDir: "{app}"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
-Name: "{autoprograms}\ميزان الطبي"; Filename: "{app}\MizanMedical.Desktop.exe"
-Name: "{autodesktop}\ميزان الطبي"; Filename: "{app}\MizanMedical.Desktop.exe"; Tasks: desktopicon
+Name: "{autoprograms}\ميزان الطبي"; Filename: "{app}\MizanMedical.Desktop.exe"; IconFilename: "{app}\MizanMedical.Desktop.exe"
+Name: "{autodesktop}\ميزان الطبي"; Filename: "{app}\MizanMedical.Desktop.exe"; IconFilename: "{app}\MizanMedical.Desktop.exe"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "إنشاء اختصار على سطح المكتب"; GroupDescription: "خيارات إضافية:"; Flags: unchecked

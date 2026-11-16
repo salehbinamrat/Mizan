@@ -1,4 +1,4 @@
-<Window x:Class="MizanMedical.Desktop.FirstRunWindow"
+<Window x:Class="MizanMedical.Desktop.FirstRunWindow" Icon="pack://application:,,,/Assets/MizanMedical.ico"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ميزان الطبي — التهيئة الأولى للمسؤول" Width="640" Height="715"
@@ -9,7 +9,7 @@
         <Border Style="{StaticResource MedicalCard}" CornerRadius="18" Padding="29">
             <ScrollViewer VerticalScrollBarVisibility="Auto">
                 <StackPanel>
-                    <TextBlock Text="✚" FontSize="38" Foreground="{StaticResource Ocean}" HorizontalAlignment="Center"/>
+                    <Image Source="pack://application:,,,/Assets/MizanMedical-UI.png" Width="78" Height="78" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,0,0,6"/>
                     <TextBlock Text="تهيئة مسؤول البرنامج لأول مرة"
                                FontSize="23" FontWeight="Bold" TextAlignment="Center"
                                Foreground="{StaticResource MedicalNavy}" Margin="0,7,0,8"/>

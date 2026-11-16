@@ -7,6 +7,8 @@ New-Item -ItemType Directory -Path $target -Force | Out-Null
 
 $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
 if (!(Test-Path $iscc)) { throw 'Inno Setup 6 not installed. Required to build installers.' }
+$brandingIcon = Join-Path $projectRoot 'src\MizanMedical.Desktop\Assets\MizanMedical.ico'
+if (!(Test-Path -LiteralPath $brandingIcon)) { throw 'Missing Mizan Medical branding icon.' }
 foreach ($arch in @('win-x86','win-x64')) {
     $publishDir = Join-Path $target "publish\$arch"
     $packageDir = Join-Path $target "portable\$arch"
@@ -23,7 +25,7 @@ foreach ($arch in @('win-x86','win-x64')) {
     if (Test-Path $zip) { Remove-Item $zip -Force }
     Compress-Archive -Path (Join-Path $packageDir '*') -DestinationPath $zip
 
-    & $iscc "/DArch=$arch" "/DSourceDir=$publishDir" "/DOutputDir=$installerDir" `
+    & $iscc "/DArch=$arch" "/DSourceDir=$publishDir" "/DOutputDir=$installerDir" "/DIconFile=$brandingIcon" `
         (Join-Path $projectRoot 'installer\MizanMedical.iss')
     if ($LASTEXITCODE -ne 0) { throw "Installer build failed: $arch" }
     $setup = Join-Path $installerDir "MizanMedical-$arch-Installer.exe"
