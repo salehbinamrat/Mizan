@@ -35,7 +35,9 @@ dotnet run --project .\src\MizanMedical.Api\MizanMedical.Api.csproj --no-launch-
 
 **النشر على LAN يتطلب HTTPS صحيحا.** استخدم اسم DNS داخليا وشهادة خادم من مرجع موثوق على أجهزة الموظفين، واضبط إعدادات شهادة Kestrel من مخزن أسرار الخادم (لا تعطل فحص الشهادات). لا يسمح الخادم بطلبات HTTP من غير loopback.
 
-على كل جهاز Windows عدل الملف المجاور لبرنامج سطح المكتب `mizan-client.json`:
+في نسخة Windows الحديثة، افتح شاشة الدخول واختر «إعداد اتصال الخادم» لإدخال العنوان وفحصه. يحفظ البرنامج العنوان في الملف الخاص بالمستخدم `%LOCALAPPDATA%\\MizanMedical\\mizan-client.json` دون حفظ كلمات مرور. ويظل ملف `mizan-client.json` المجاور للبرنامج عنوانا افتراضيا لأول تشغيل، إذا لم يكن للمستخدم إعداد خاص.
+
+على كل جهاز Windows يمكن أيضا تعديل الملف الافتراضي المجاور لبرنامج سطح المكتب `mizan-client.json`:
 
 ```json
 { "serverUrl": "https://mizan-hospital.example.internal:5081" }

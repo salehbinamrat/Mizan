@@ -1,0 +1,32 @@
+<Window x:Class="MizanMedical.Desktop.ServerSettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ميزان الطبي — إعداد الاتصال" Width="610" Height="438"
+        MinWidth="580" MinHeight="410" WindowStartupLocation="CenterOwner"
+        
+        FlowDirection="RightToLeft" Background="{StaticResource MedicalCanvas}">
+    <Border Style="{StaticResource MedicalCard}" Margin="22" Padding="24">
+        <StackPanel>
+            <TextBlock Text="عنوان خادم المستشفى" FontSize="23" FontWeight="Bold"
+                       Foreground="{StaticResource MedicalNavy}" Margin="0,0,0,12"/>
+            <TextBlock Text="البرنامج يحتاج خادم ميزان الطبي API وقاعدة PostgreSQL. أدخل عنوان الخادم المركزي مع البورت. لا تدخل اسم المستخدم أو كلمة المرور هنا."
+                       TextWrapping="Wrap" Foreground="{StaticResource MedicalMuted}"
+                       Margin="0,0,0,13"/>
+            <TextBlock Text="مثال: https://192.168.1.10:5081" FontWeight="SemiBold"/>
+            <TextBox x:Name="AddressBox" MinHeight="42" FlowDirection="LeftToRight"
+                     HorizontalContentAlignment="Left" Margin="0,3,0,11"/>
+            <TextBlock Text="الاتصال الخارجي يتطلب HTTPS بشهادة موثوقة، ولن يُعطل البرنامج التحقق من الشهادة."
+                       TextWrapping="Wrap" Foreground="{StaticResource MedicalWarning}"
+                       Margin="0,0,0,13"/>
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="TestButton" Content="فحص الاتصال" Click="Test_Click"
+                        Width="132" Background="#216B84"/>
+                <Button Content="حفظ العنوان" Click="Save_Click" Width="132"/>
+                <Button Content="إلغاء" Click="Cancel_Click" Width="90"
+                        Background="#788698"/>
+            </StackPanel>
+            <TextBlock x:Name="ResultText" TextWrapping="Wrap"
+                       Foreground="{StaticResource MedicalNavy}" Margin="3,14,0,0"/>
+        </StackPanel>
+    </Border>
+</Window>

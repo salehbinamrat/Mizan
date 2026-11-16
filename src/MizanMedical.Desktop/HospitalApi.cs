@@ -10,25 +10,80 @@ namespace MizanMedical.Desktop;
 
 public sealed class HospitalApi
 {
-    private readonly HttpClient _http;
+    private HttpClient _http;
     private static readonly TimeSpan InteractiveGetTimeout = TimeSpan.FromSeconds(25);
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private static string UserConfigPath => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "MizanMedical", "mizan-client.json");
     public LoginUser? Staff { get; private set; }
     public bool IsLocalServer => _http.BaseAddress?.IsLoopback == true;
+    public string ServerAddress => _http.BaseAddress!.GetLeftPart(UriPartial.Authority);
+    public string? ConfigurationIssue { get; private set; }
+
+    private static HttpClient CreateClient(string address, TimeSpan? timeout = null) =>
+        new() { BaseAddress = new Uri(address.TrimEnd('/') + "/"),
+                Timeout = timeout ?? TimeSpan.FromMinutes(30) };
 
     public HospitalApi()
     {
-        string configPath = Path.Combine(AppContext.BaseDirectory, "mizan-client.json");
-        string url = "https://localhost:5081";
-        if (File.Exists(configPath))
+        // The login window MUST remain usable when an old/invalid client config is
+        // deployed. The remote HTTPS URL is never silently trusted if validation fails.
+        _http = CreateClient(ServerEndpointRules.DefaultAddress);
+        string path = File.Exists(UserConfigPath)
+            ? UserConfigPath
+            : Path.Combine(AppContext.BaseDirectory, "mizan-client.json");
+        try
         {
-            var config = JsonSerializer.Deserialize<ClientConfig>(File.ReadAllText(configPath), JsonOptions);
-            url = config?.ServerUrl ?? url;
+            if (File.Exists(path))
+            {
+                var config = JsonSerializer.Deserialize<ClientConfig>(File.ReadAllText(path), JsonOptions);
+                string validated = ServerEndpointRules.Normalize(config?.ServerUrl);
+                var replacement = CreateClient(validated);
+                var old = _http;
+                _http = replacement;
+                old.Dispose();
+            }
         }
-        var uri = new Uri(url);
-        if (uri.Scheme != Uri.UriSchemeHttps && !(uri.IsLoopback && uri.Scheme == Uri.UriSchemeHttp))
-            throw new InvalidOperationException("لا يمكن استخدام HTTP على شبكة المستشفى. اضبط HTTPS بشهادة موثوقة.");
-        _http = new HttpClient { BaseAddress = new Uri(uri.ToString().TrimEnd('/') + "/"), Timeout = TimeSpan.FromMinutes(30) };
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or JsonException or DomainException or UriFormatException)
+        {
+            ConfigurationIssue = "إعداد اتصال الخادم غير صالح. اختر «إعداد اتصال الخادم» لتصحيحه.";
+            StartupDiagnostics.Record("client-configuration", ex);
+        }
+    }
+
+    public void ConfigureServer(string address)
+    {
+        string normalized = ServerEndpointRules.Normalize(address);
+        string destination = UserConfigPath;
+        string directory = Path.GetDirectoryName(destination)!;
+        Directory.CreateDirectory(directory);
+        string temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            // The app never stores staff credentials or TLS certificate exceptions.
+            File.WriteAllText(temporary, JsonSerializer.Serialize(new ClientConfig(normalized)));
+            File.Move(temporary, destination, true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
+        var next = CreateClient(normalized);
+        var previous = _http;
+        _http = next;
+        previous.Dispose();
+        Staff = null;
+        ConfigurationIssue = null;
+    }
+
+    public async Task TestServerAsync(string address)
+    {
+        string normalized = ServerEndpointRules.Normalize(address);
+        using var temporary = CreateClient(normalized, TimeSpan.FromSeconds(10));
+        using var response = await temporary.GetAsync("api/initial-setup/status");
+        response.EnsureSuccessStatusCode();
     }
 
     public async Task Login(string username, string password)
