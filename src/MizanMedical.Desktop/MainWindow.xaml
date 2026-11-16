@@ -193,6 +193,22 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+            <TabItem Header="حسابي">
+                <StackPanel Margin="28" MaxWidth="670" HorizontalAlignment="Right">
+                    <TextBlock Text="أمان حساب المستخدم" FontSize="24" FontWeight="Bold"
+                               Foreground="{StaticResource MedicalNavy}" Margin="0,0,0,16"/>
+                    <Border Style="{StaticResource MedicalCard}" Padding="22">
+                        <StackPanel>
+                            <TextBlock Text="تغيير كلمة المرور" FontSize="18" FontWeight="SemiBold"/>
+                            <TextBlock Text="يمكنك تغيير كلمة مرورك بنفسك. سيطلب النظام كلمة المرور الحالية، ثم يغلق جميع جلسات الدخول السابقة حفاظا على الأمان."
+                                       TextWrapping="Wrap" Margin="0,8,0,15"
+                                       Foreground="{StaticResource MedicalMuted}"/>
+                            <Button Content="تغيير كلمة المرور" Click="ChangePassword_Click"
+                                    Width="210" HorizontalAlignment="Right"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </TabItem>
         </TabControl>
     </DockPanel>
 </Window>

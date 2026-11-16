@@ -122,6 +122,14 @@ TOKEN="$TOKEN_CASHIER"
 close=$(post shifts/close "$(jq -n --arg s "$SHIFT" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
 assert_eq "$(jq -r .expectedCash <<< "$close")" 140
 assert_eq "$(jq -r .variance <<< "$close")" 0
+# Password change is self-service for each logged-in account, including original owner.
+# It invalidates all existing sessions and requires re-authentication.
+NEW_CASHIER_PASS='cashier-new-password-2026!'
+assert_eq "$(status "$TOKEN_CASHIER" POST auth/change-password "$(jq -n --arg old "$cashierPass" --arg new "$NEW_CASHIER_PASS" '{currentPassword:$old,newPassword:$new,confirmPassword:$new}')")" 204
+assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_CASHIER" "$BASE/api/auth/me")" 401
+TOKEN_CASHIER_NEW=$(login "$cashierName" "$NEW_CASHIER_PASS")
+[[ ${#TOKEN_CASHIER_NEW} == 64 ]] || { echo 'Password change login failed'; exit 1; }
+assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" -d "$(jq -n --arg u "$cashierName" --arg p "$cashierPass" '{username:$u,password:$p}')")" 401
 TOKEN="$TOKEN_OWNER"
 request POST auth/logout '{}' >/dev/null || true
 assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_OWNER" "$BASE/api/audit/recent")" 401
