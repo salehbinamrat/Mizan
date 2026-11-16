@@ -63,7 +63,7 @@ public static class DepartmentClaims
     public static bool HasGlobalScope(ClaimsPrincipal user) =>
         IsOwner(user) || user.HasClaim(AllDepartments, "true");
     public static Guid? Department(ClaimsPrincipal user) =>
-        Guid.TryParse(user.FindFirstValue(DepartmentId), out var id) ? id : null;
+        Guid.TryParse(user.FindFirst(DepartmentId)?.Value, out var id) ? id : null;
     public static bool CanRead(ClaimsPrincipal user, Guid? departmentId) =>
         AccessRules.CanReadDepartment(HasGlobalScope(user), Department(user), departmentId);
     public static bool HasPermission(ClaimsPrincipal user, string name) =>
