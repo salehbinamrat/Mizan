@@ -161,6 +161,95 @@ raceShift=$(get shifts/open | jq -r '.[0].id')
 raceClose=$(post shifts/close "$(jq -n --arg s "$raceShift" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
 assert_eq "$(jq -r .expectedCash <<< "$raceClose")" 140
 rm -f /tmp/mizan-shift-race-{1,2}.{json,status}
+# Exercise financial races against disposable PostgreSQL through the real HTTP server.
+# Different request IDs must never overpay an invoice or overdraw a shift; replaying
+# one request ID concurrently must create exactly one financial posting.
+raceDir=$(mktemp -d)
+trap 'rm -rf "$raceDir"' EXIT
+race_post() {
+  local name="$1" endpoint="$2" payload="$3"
+  curl --silent --show-error -o "$raceDir/$name.json" -w '%{http_code}' \
+    -H "Authorization: Bearer $TOKEN_CASHIER" -H 'Content-Type: application/json' \
+    -X POST "$BASE/api/$endpoint" -d "$payload" > "$raceDir/$name.code"
+}
+race_result() { cat "$raceDir/$1.code"; }
+assert_one_winner() {
+  local a b
+  a=$(race_result "$1"); b=$(race_result "$2")
+  [[ ("$a" == 201 && "$b" == 400) || ("$a" == 400 && "$b" == 201) ]] || {
+    echo "Race $1/$2 should produce exactly one 201 and one 400; got $a/$b" >&2
+    exit 1
+  }
+}
+TOKEN="$TOKEN_OWNER"
+raceInvoice=$(post invoices "$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" \
+  --arg p "$PATIENT" --arg s "$SERVICE" \
+  '{requestId:$k,patientId:$p,lines:[{serviceId:$s,quantity:1}]}')")
+raceInvoiceId=$(jq -r .id <<< "$raceInvoice")
+TOKEN="$TOKEN_CASHIER"
+raceOpened=$(post shifts/open "$(jq -n --arg d "$DESK" \
+  '{cashDeskId:$d,openingCash:140}')")
+raceShiftId=$(jq -r .id <<< "$raceOpened")
+receiptOne=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg i "$raceInvoiceId" --arg s "$raceShiftId" \
+  '{requestId:$k,invoiceId:$i,shiftId:$s,amount:60}')
+receiptTwo=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg i "$raceInvoiceId" --arg s "$raceShiftId" \
+  '{requestId:$k,invoiceId:$i,shiftId:$s,amount:60}')
+race_post receipt1 receipts "$receiptOne" &
+race_post receipt2 receipts "$receiptTwo" &
+wait
+assert_one_winner receipt1 receipt2
+TOKEN="$TOKEN_OWNER"
+assert_eq "$(get "invoices/$raceInvoiceId" | jq -r .paid)" 60
+assert_eq "$(get "invoices/$raceInvoiceId" | jq -r .balance)" 20
+TOKEN="$TOKEN_CASHIER"
+# Two simultaneous retries of the SAME request ID must return one create and one replay.
+duplicateReceipt=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" \
+  --arg i "$raceInvoiceId" --arg s "$raceShiftId" \
+  '{requestId:$k,invoiceId:$i,shiftId:$s,amount:10}')
+race_post duplicate1 receipts "$duplicateReceipt" &
+race_post duplicate2 receipts "$duplicateReceipt" &
+wait
+dup1=$(race_result duplicate1); dup2=$(race_result duplicate2)
+[[ ("$dup1" == 201 && "$dup2" == 200) || ("$dup1" == 200 && "$dup2" == 201) ]] || {
+  echo "Idempotent duplicate receipts returned $dup1/$dup2, expected 201/200" >&2
+  exit 1
+}
+TOKEN="$TOKEN_OWNER"
+assert_eq "$(get "invoices/$raceInvoiceId" | jq -r .paid)" 70
+assert_eq "$(get "invoices/$raceInvoiceId" | jq -r .balance)" 10
+TOKEN="$TOKEN_CASHIER"
+expenseOne=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg s "$raceShiftId" \
+  '{requestId:$k,shiftId:$s,category:"اختبار",description:"فحص الصرف المتزامن",amount:130}')
+expenseTwo=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg s "$raceShiftId" \
+  '{requestId:$k,shiftId:$s,category:"اختبار",description:"فحص الصرف المتزامن",amount:130}')
+race_post expense1 expenses "$expenseOne" &
+race_post expense2 expenses "$expenseTwo" &
+wait
+assert_one_winner expense1 expense2
+# Closing and spending may race, but the close must account for any completed
+# expense, and no expense may be committed AFTER the close.
+lateExpense=$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg s "$raceShiftId" \
+  '{requestId:$k,shiftId:$s,category:"اختبار",description:"صرف بالتزامن مع الاقفال",amount:20}')
+closePayload=$(jq -n --arg s "$raceShiftId" \
+  '{shiftId:$s,countedCash:80,comment:"اختبار اقفال متزامن"}')
+race_post lateExpense expenses "$lateExpense" &
+race_post closeRace shifts/close "$closePayload" &
+wait
+assert_eq "$(race_result closeRace)" 200
+lateStatus=$(race_result lateExpense)
+[[ "$lateStatus" == 201 || "$lateStatus" == 400 ]] || {
+  echo "Concurrent late expense returned $lateStatus" >&2
+  exit 1
+}
+expected=$(jq -r .expectedCash "$raceDir/closeRace.json")
+if [[ "$lateStatus" == 201 ]]; then
+  assert_eq "$expected" 60
+else
+  assert_eq "$expected" 80
+fi
+assert_eq "$(status "$TOKEN_CASHIER" POST expenses \
+  "$(jq -n --arg k "$(cat /proc/sys/kernel/random/uuid)" --arg s "$raceShiftId" \
+  '{requestId:$k,shiftId:$s,category:"اختبار",description:"مرفوض بعد اقفال الصندوق",amount:1}')")" 400
 # Owner must not strand a nonzero cash balance by reassigning or disabling the cashier.
 TOKEN="$TOKEN_OWNER"
 cashierGrants='["desks.read","shifts.open","shifts.read","shifts.close","invoices.read","receipts.create","expenses.create"]'
