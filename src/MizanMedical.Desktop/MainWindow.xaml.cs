@@ -47,6 +47,7 @@ public partial class MainWindow : Window
         ExpensesTab.Visibility = Has("expenses.create") ? Visibility.Visible : Visibility.Collapsed;
         // Cash desks are created automatically with accounts, not through a free-form form.
         ManageUsersGroup.Visibility = Has("users.manage") ? Visibility.Visible : Visibility.Collapsed;
+        BackupGroup.Visibility = App.Api.Staff?.IsSystemOwner == true ? Visibility.Visible : Visibility.Collapsed;
         AdminTab.Visibility = IsAdmin ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -288,6 +289,11 @@ public partial class MainWindow : Window
         await RefreshAll();
         StatusLabel.Text = "تم تسجيل سند الصرف وترحيله إلى الحسابات.";
     });
+
+    private void Backup_Click(object sender, RoutedEventArgs e)
+    {
+        new BackupWindow { Owner = this }.ShowDialog();
+    }
 
     private void ManageUsers_Click(object sender, RoutedEventArgs e)
     {

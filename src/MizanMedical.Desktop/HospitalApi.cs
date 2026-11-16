@@ -2,6 +2,8 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
+using MizanMedical.Domain;
 using System.Text.Json;
 
 namespace MizanMedical.Desktop;
@@ -24,7 +26,7 @@ public sealed class HospitalApi
         var uri = new Uri(url);
         if (uri.Scheme != Uri.UriSchemeHttps && !(uri.IsLoopback && uri.Scheme == Uri.UriSchemeHttp))
             throw new InvalidOperationException("لا يمكن استخدام HTTP على شبكة المستشفى. اضبط HTTPS بشهادة موثوقة.");
-        _http = new HttpClient { BaseAddress = new Uri(uri.ToString().TrimEnd('/') + "/"), Timeout = TimeSpan.FromSeconds(30) };
+        _http = new HttpClient { BaseAddress = new Uri(uri.ToString().TrimEnd('/') + "/"), Timeout = TimeSpan.FromMinutes(30) };
     }
 
     public async Task Login(string username, string password)
@@ -38,6 +40,39 @@ public sealed class HospitalApi
     {
         try { if (Staff is not null) await PostWithoutResult("api/auth/logout", new { }); }
         finally { Staff = null; _http.DefaultRequestHeaders.Authorization = null; }
+    }
+
+    public async Task<string> DownloadFullBackup(string passphrase, string destination)
+    {
+        if (Staff?.IsSystemOwner != true)
+            throw new UnauthorizedAccessException("النسخة الشاملة متاحة لمسؤول البرنامج الأساسي فقط.");
+        string temporary = destination + ".partial";
+        if (File.Exists(temporary)) throw new IOException("يوجد ملف مؤقت بنفس الاسم؛ اختر اسما جديدا.");
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "api/admin/backup/download")
+            { Content = JsonContent.Create(new { Passphrase = passphrase }) };
+            using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+            if (!response.IsSuccessStatusCode) await Read<JsonElement>(response);
+            await using (var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write,
+                FileShare.None, 1024 * 1024, FileOptions.Asynchronous | FileOptions.WriteThrough))
+            {
+                await response.Content.CopyToAsync(file);
+                await file.FlushAsync();
+            }
+            await using (var stream = File.OpenRead(temporary))
+                await EncryptedBackupFormat.VerifyAsync(stream, passphrase);
+            File.Move(temporary, destination, true);
+            await using var verifiedFile = File.OpenRead(destination);
+            string checksum = Convert.ToHexString(await SHA256.HashDataAsync(verifiedFile));
+            await File.WriteAllTextAsync(destination + ".sha256", checksum);
+            return checksum;
+        }
+        catch
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+            throw;
+        }
     }
 
     public Task<List<DepartmentDto>> Departments() => Get<List<DepartmentDto>>("api/departments");

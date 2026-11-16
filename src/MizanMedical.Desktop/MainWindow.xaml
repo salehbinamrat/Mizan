@@ -183,6 +183,9 @@
                                         Click="ManageUsers_Click" Background="#227B8B"/>
                             </StackPanel>
                         </GroupBox>
+                        <GroupBox x:Name="BackupGroup" Header="نسخة احتياطية شاملة" Padding="14" Margin="0,0,0,12">
+                            <StackPanel><TextBlock Text="احفظ قاعدة بيانات المستشفى كاملة في ملف مشفر، مع اختيار مجلد أو قرص خارجي." TextWrapping="Wrap"/><Button Content="تنزيل قاعدة البيانات كاملة" Click="Backup_Click" Width="260" HorizontalAlignment="Right" Background="#297364" Margin="0,12,0,0"/></StackPanel>
+                        </GroupBox>
                         <TextBlock Text="للأمان: ينشئ المدير الحسابات، ولا تظهر كلمات المرور في التقارير أو سجلات العمليات." Foreground="#607D8E" TextWrapping="Wrap"/>
                     </StackPanel>
                 </ScrollViewer>
