@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -87,6 +88,7 @@ public partial class MainWindow : Window
 
     private async Task RefreshAll()
     {
+        var elapsed = Stopwatch.StartNew();
         await App.Api.RefreshSession();
         ApplyAccountPermissions();
         var account = App.Api.Staff ?? throw new InvalidOperationException("انتهت جلسة الدخول.");
@@ -98,16 +100,25 @@ public partial class MainWindow : Window
             ? App.Api.Patients(PatientListSearchBox.Text, _patientsPage, PageSize) : null;
         Task<List<PatientDto>>? invoicePatientsTask =
             Has(HospitalPermissions.InvoicesIssue) && Has(HospitalPermissions.PatientsRead)
-            ? App.Api.Patients(InvoicePatientSearchBox.Text) : null;
+            ? (patientsTask is not null && RefreshLookupRules.CanReuseFirstPage(
+                    _patientsPage, PageSize, PatientListSearchBox.Text, InvoicePatientSearchBox.Text)
+                ? patientsTask : App.Api.Patients(InvoicePatientSearchBox.Text))
+            : null;
         Task<List<ServiceDto>>? servicesTask = Has(HospitalPermissions.ServicesRead)
             ? App.Api.Services() : null;
         Task<List<InvoiceDto>>? invoicesTask = Has(HospitalPermissions.InvoicesRead)
             ? App.Api.Invoices(InvoiceListSearchBox.Text, _invoicesPage, PageSize) : null;
         Task<List<InvoiceDto>>? receiptInvoicesTask =
             Has(HospitalPermissions.ReceiptsCreate) && Has(HospitalPermissions.InvoicesRead)
-            ? App.Api.Invoices(ReceiptInvoiceSearchBox.Text) : null;
+            ? (invoicesTask is not null && RefreshLookupRules.CanReuseFirstPage(
+                    _invoicesPage, PageSize, InvoiceListSearchBox.Text, ReceiptInvoiceSearchBox.Text)
+                ? invoicesTask : App.Api.Invoices(ReceiptInvoiceSearchBox.Text))
+            : null;
         Task<List<CashDeskDto>>? desksTask = Has(HospitalPermissions.DesksRead)
             ? App.Api.CashDesks() : null;
+        Task<PersonalDeskSummaryDto?>? deskSummaryTask =
+            Has(HospitalPermissions.DesksRead) && account.DepartmentId.HasValue
+                ? TryLoadPersonalDeskSummary() : null;
         Task<List<CashShiftDto>>? shiftsTask = Has(HospitalPermissions.ShiftsRead)
             ? App.Api.OpenShifts() : null;
         Task<DailyReportDto>? reportTask = CanReport
@@ -121,6 +132,7 @@ public partial class MainWindow : Window
         if (invoicesTask is not null) requests.Add(invoicesTask);
         if (receiptInvoicesTask is not null) requests.Add(receiptInvoicesTask);
         if (desksTask is not null) requests.Add(desksTask);
+        if (deskSummaryTask is not null) requests.Add(deskSummaryTask);
         if (shiftsTask is not null) requests.Add(shiftsTask);
         if (reportTask is not null) requests.Add(reportTask);
         await Task.WhenAll(requests);
@@ -157,24 +169,19 @@ public partial class MainWindow : Window
         if (receiptInvoicesTask is not null)
             ReceiptInvoiceCombo.ItemsSource = (await receiptInvoicesTask).Where(i => i.Balance > 0m).ToList();
         if (desksTask is not null)
-        {
             OpenDeskCombo.ItemsSource = await desksTask;
-            try
-            {
-                var desk = await App.Api.MyCashDeskSummary();
-                PersonalDeskSummaryText.Text = desk.ShiftId is not null
-                    ? $"صندوقي: {desk.Name} | افتتاح: {desk.OpeningCash:N2} | قبض: {desk.Received:N2} | صرف: {desk.Spent:N2} | الرصيد المتوقع: {desk.Expected:N2}"
-                    : desk.IsFirstShift
-                        ? $"صندوقي: {desk.Name} | لم تُسجل مناوبة سابقة. يتطلب الرصيد الأولي مراجعة مصدر النقدية."
-                        : desk.NextOpeningCash is decimal previous
-                            ? $"صندوقي: {desk.Name} | رصيد الافتتاح التالي الإلزامي: {previous:N2} (مطابق لإقفال المناوبة السابقة)."
-                            : $"صندوقي: {desk.Name} | الرصيد السابق غير مكتمل؛ راجع المسؤول قبل فتح مناوبة جديدة.";
-            }
-            catch (InvalidOperationException)
-            {
-                PersonalDeskSummaryText.Text = "لا يوجد صندوق شخصي لهذا الحساب؛ راجع مدير البرنامج.";
-            }
+        if (deskSummaryTask is not null && await deskSummaryTask is { } desk)
+        {
+            PersonalDeskSummaryText.Text = desk.ShiftId is not null
+                ? $"صندوقي: {desk.Name} | افتتاح: {desk.OpeningCash:N2} | قبض: {desk.Received:N2} | صرف: {desk.Spent:N2} | الرصيد المتوقع: {desk.Expected:N2}"
+                : desk.IsFirstShift
+                    ? $"صندوقي: {desk.Name} | لم تُسجل مناوبة سابقة. يتطلب الرصيد الأولي مراجعة مصدر النقدية."
+                    : desk.NextOpeningCash is decimal previous
+                        ? $"صندوقي: {desk.Name} | رصيد الافتتاح التالي الإلزامي: {previous:N2} (مطابق لإقفال المناوبة السابقة)."
+                        : $"صندوقي: {desk.Name} | الرصيد السابق غير مكتمل؛ راجع المسؤول قبل فتح مناوبة جديدة.";
         }
+        else if (desksTask is not null)
+            PersonalDeskSummaryText.Text = "لا يوجد صندوق شخصي لهذا الحساب؛ راجع مدير البرنامج.";
         if (shiftsTask is not null)
         {
             var shifts = await shiftsTask;
@@ -183,7 +190,13 @@ public partial class MainWindow : Window
             ExpenseShiftCombo.ItemsSource = shifts;
         }
         if (reportTask is not null) DisplayReport(await reportTask);
-        StatusLabel.Text = "تم تحديث البيانات وفق صلاحياتك ونطاق القسم المسموح.";
+        StatusLabel.Text = $"تم تحديث البيانات وفق صلاحياتك ونطاق القسم خلال {elapsed.Elapsed.TotalSeconds:N1} ثانية.";
+    }
+
+    private static async Task<PersonalDeskSummaryDto?> TryLoadPersonalDeskSummary()
+    {
+        try { return await App.Api.MyCashDeskSummary(); }
+        catch (InvalidOperationException) { return null; }
     }
 
     private async Task LoadPatientsListPage()
