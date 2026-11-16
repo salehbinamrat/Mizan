@@ -4,7 +4,13 @@ set -euo pipefail
 BASE="${MIZAN_TEST_URL:-http://127.0.0.1:5081}"
 : "${MIZAN_TEST_ADMIN_USERNAME:?Set test username}"
 : "${MIZAN_TEST_ADMIN_PASSWORD:?Set test password}"
-assert_eq() { [[ "$1" == "$2" ]] || { echo "FAIL expected=$2 got=$1" >&2; exit 1; }; }
+assert_eq() {
+  [[ "$1" == "$2" ]] && return 0
+  # JSON decimals may be serialized as 80.00 while the expected fixture is 80.
+  if [[ "$1" =~ ^-?[0-9]+(\.[0-9]+)?$ && "$2" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] \
+     && jq -en --argjson a "$1" --argjson b "$2" '$a == $b' >/dev/null; then return 0; fi
+  echo "FAIL expected=$2 got=$1" >&2; exit 1
+}
 request() { curl --silent --show-error --fail-with-body -H 'Content-Type: application/json' -H "Authorization: Bearer $TOKEN" -X "$1" "$BASE/api/$2" -d "$3"; }
 post() { request POST "$1" "$2"; }
 get() { curl --silent --show-error --fail-with-body -H "Authorization: Bearer $TOKEN" "$BASE/api/$1"; }
