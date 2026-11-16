@@ -9,7 +9,8 @@ temp="$(mktemp -d)"
 chmod 700 "$temp"
 trap 'rm -rf "$temp"' EXIT
 
-ownerToken=$(curl --fail-with-body --silent --show-error \
+# Isolate the restore login from the smoke suite rate limiter on loopback.
+ownerToken=$(curl --interface 127.0.0.3 --fail-with-body --silent --show-error \
   -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" \
   -d "$(jq -n --arg u "$MIZAN_TEST_ADMIN_USERNAME" --arg p "$MIZAN_TEST_ADMIN_PASSWORD" \
   --arg h "$MIZAN_TEST_HOSPITAL_NAME" '{username:$u,password:$p,hospitalName:$h}')" | jq -r .token)
