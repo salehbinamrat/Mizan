@@ -1,0 +1,56 @@
+name: API Integration PostgreSQL
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-integration:
+    name: API Integration PostgreSQL
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: mizan_ci
+          POSTGRES_USER: mizan_ci
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mizan_ci -d mizan_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build API
+        run: dotnet build src/MizanMedical.Api/MizanMedical.Api.csproj --configuration Release
+      - name: Execute API and PostgreSQL workflow
+        shell: bash
+        env:
+          ASPNETCORE_URLS: http://127.0.0.1:5081
+          MIZAN_DB_CONNECTION: Host=127.0.0.1;Port=5432;Database=mizan_ci;Username=mizan_ci;Password=ci-only-password
+          MIZAN_BOOTSTRAP_USERNAME: testadmin
+          MIZAN_BOOTSTRAP_PASSWORD: ci-test-password-12345!
+          MIZAN_TEST_ADMIN_USERNAME: testadmin
+          MIZAN_TEST_ADMIN_PASSWORD: ci-test-password-12345!
+        run: |
+          dotnet run --project src/MizanMedical.Api/MizanMedical.Api.csproj -c Release --no-build --no-launch-profile > /tmp/mizan-api.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; cat /tmp/mizan-api.log' EXIT
+          ready=0
+          for i in {1..45}; do
+            if curl --silent --fail http://127.0.0.1:5081/health >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then echo 'API failed to start'; exit 1; fi
+          bash scripts/smoke-api.sh

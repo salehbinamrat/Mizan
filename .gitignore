@@ -1,0 +1,17 @@
+**/bin/
+**/obj/
+.vs/
+.idea/
+*.user
+*.suo
+.env
+*.pfx
+*.key
+*.pem
+appsettings.Production.json
+secrets.json
+artifacts/
+TestResults/
+*.db
+*.bak
+*.dump
