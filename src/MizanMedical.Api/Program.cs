@@ -1,4 +1,6 @@
 using System.Net;
+using System.Data;
+using System.Security.Cryptography;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.RateLimiting;
@@ -14,6 +16,7 @@ string connectionString = Environment.GetEnvironmentVariable("MIZAN_DB_CONNECTIO
     ?? throw new InvalidOperationException("MIZAN_DB_CONNECTION must be configured with a central PostgreSQL database.");
 
 builder.Services.AddDbContext<HospitalDbContext>(options => options.UseNpgsql(connectionString));
+builder.Services.AddSingleton<InitialOwnerSetupState>();
 builder.Services.AddAuthentication("Session").AddScheme<AuthenticationSchemeOptions, SessionAuthenticationHandler>("Session", _ => { });
 builder.Services.AddAuthorization(options =>
 {
@@ -35,29 +38,57 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 
-// Initial schema for pilot; production upgrades must use reviewed EF migrations.
+// Initial schema for pilot only; production deployments must use reviewed EF migrations.
+// First-run setup does not reset databases, create a second owner, or recover lost owner credentials.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<HospitalDbContext>();
+    var setup = scope.ServiceProvider.GetRequiredService<InitialOwnerSetupState>();
     await db.Database.EnsureCreatedAsync();
-    if (!await db.StaffUsers.AnyAsync(u => u.IsSystemOwner))
+    bool anyOwner = await db.StaffUsers.AnyAsync(u => u.IsSystemOwner);
+    if (!anyOwner)
     {
+        // Existing accounts with no owner require a supervised recovery procedure,
+        // never a public endpoint that recreates an owner.
+        if (await db.StaffUsers.AnyAsync())
+            throw new InvalidOperationException(
+                "Staff accounts exist but no system owner was found. Stop and use an audited recovery procedure.");
         string? initialName = Environment.GetEnvironmentVariable("MIZAN_BOOTSTRAP_USERNAME");
         string? initialPassword = Environment.GetEnvironmentVariable("MIZAN_BOOTSTRAP_PASSWORD");
-        if (string.IsNullOrWhiteSpace(initialName) || string.IsNullOrWhiteSpace(initialPassword))
-            throw new InvalidOperationException("Set MIZAN_BOOTSTRAP_USERNAME and MIZAN_BOOTSTRAP_PASSWORD for the first start. No default admin account exists.");
-        string adminUsername = initialName.Trim().ToLowerInvariant();
-        if (adminUsername.Length is < 3 or > 80 ||
-            !adminUsername.All(c => c is >= 'a' and <= 'z' or >= '0' and <= '9' or '_' or '.'))
-            throw new InvalidOperationException("Bootstrap admin username must contain only lowercase English letters, digits, underscores or periods.");
-        var (hash, salt) = PasswordSecurity.Create(initialPassword);
-        db.StaffUsers.Add(new StaffUser
+        if (!string.IsNullOrWhiteSpace(initialName) && !string.IsNullOrWhiteSpace(initialPassword))
         {
-            Username = adminUsername, FullName = "مدير النظام",
-            Role = HospitalRole.Admin, IsSystemOwner = true, AllDepartments = true,
-            PasswordHash = hash, PasswordSalt = salt
-        });
-        await db.SaveChangesAsync();
+            string normalized = InitialOwnerSetupRules.Validate("مدير النظام", initialName,
+                initialPassword, initialPassword);
+            var (hash, salt) = PasswordSecurity.Create(initialPassword);
+            db.StaffUsers.Add(new StaffUser
+            {
+                Username = normalized, FullName = "مدير النظام",
+                Role = HospitalRole.Admin, IsSystemOwner = true, AllDepartments = true,
+                PasswordHash = hash, PasswordSalt = salt
+            });
+            await db.SaveChangesAsync();
+        }
+        else if (initialName is not null || initialPassword is not null)
+        {
+            throw new InvalidOperationException("Both bootstrap credentials must be provided together.");
+        }
+        else
+        {
+            // Do not emit the pairing code into redirected service logs. For non-interactive
+            // deployments, the existing server-side bootstrap environment method remains available.
+            if (!Environment.UserInteractive || Console.IsOutputRedirected)
+                throw new InvalidOperationException(
+                    "First-run interactive setup needs the local server console. " +
+                    "For Windows services, provision the first owner using server-only bootstrap environment variables.");
+            string pairingCode = Convert.ToHexString(RandomNumberGenerator.GetBytes(24));
+            setup.Activate(pairingCode);
+            Console.WriteLine("==============================================");
+            Console.WriteLine("Mizan Medical FIRST-RUN setup (local server only)");
+            Console.WriteLine("One-time setup code: " + pairingCode);
+            Console.WriteLine("Enter this code in the Windows first-run setup wizard ON THIS SERVER.");
+            Console.WriteLine("It expires when the server stops or after the owner is created.");
+            Console.WriteLine("==============================================");
+        }
     }
 }
 
@@ -106,5 +137,50 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapGet("/health", () => Results.Ok(new { Status = "ok", App = "MizanMedical" }));
+
+// The status is safe to check from desktop clients, but the owner creation
+// endpoint can be used only from the physical server over loopback.
+app.MapGet("/api/initial-setup/status", async (
+    HttpContext context, HospitalDbContext db, InitialOwnerSetupState setup) =>
+{
+    bool empty = !await db.StaffUsers.AnyAsync();
+    bool local = context.Connection.RemoteIpAddress is { } address && IPAddress.IsLoopback(address);
+    return Results.Ok(new
+    {
+        Required = empty,
+        CanInitialize = InitialOwnerSetupRules.CanInitialize(local, !empty, setup.Enabled)
+    });
+}).AllowAnonymous();
+
+app.MapPost("/api/initial-setup/complete", async (
+    HttpContext context, InitialOwnerSetupRequest request,
+    HospitalDbContext db, InitialOwnerSetupState setup) =>
+{
+    bool local = context.Connection.RemoteIpAddress is { } address && IPAddress.IsLoopback(address);
+    if (!local) return Results.StatusCode(StatusCodes.Status403Forbidden);
+    if (!setup.Matches(request.SetupCode)) return Results.Unauthorized();
+
+    // Serializable predicate read ensures concurrent first-run requests cannot create
+    // two owners. PostgreSQL aborts a conflicting transaction with SQLSTATE 40001.
+    await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+    bool anyStaff = await db.StaffUsers.AnyAsync();
+    if (!InitialOwnerSetupRules.CanInitialize(local, anyStaff, setup.Enabled))
+        return Results.Conflict(new { Title = "تمت تهيئة حساب المسؤول الأول مسبقا." });
+
+    string username = InitialOwnerSetupRules.Validate(
+        request.FullName, request.Username, request.Password, request.ConfirmPassword);
+    var (hash, salt) = PasswordSecurity.Create(request.Password!);
+    var owner = new StaffUser
+    {
+        Username = username, FullName = request.FullName!.Trim(),
+        Role = HospitalRole.Admin, IsSystemOwner = true, AllDepartments = true,
+        PasswordHash = hash, PasswordSalt = salt
+    };
+    db.StaffUsers.Add(owner);
+    await db.SaveChangesAsync();
+    await transaction.CommitAsync();
+    setup.Disable(); // the pairing code is now unusable
+    return Results.Created("/api/auth/login", new { owner.Id, owner.Username, owner.FullName });
+}).AllowAnonymous().RequireRateLimiting("login");
 app.MapHospitalRoutes();
 await app.RunAsync();

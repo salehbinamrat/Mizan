@@ -21,6 +21,11 @@ login() {
 }
 TOKEN=$(login "$MIZAN_TEST_ADMIN_USERNAME" "$MIZAN_TEST_ADMIN_PASSWORD")
 [[ ${#TOKEN} == 64 ]] || { echo 'Authentication token missing'; exit 1; }
+# On a populated database, first-run owner setup must be permanently closed.
+setupStatus=$(curl --silent --show-error --fail-with-body "$BASE/api/initial-setup/status")
+assert_eq "$(jq -r .required <<< "$setupStatus")" false
+assert_eq "$(jq -r .canInitialize <<< "$setupStatus")" false
+assert_eq "$(status "$TOKEN" POST initial-setup/complete '{"setupCode":"invalid"}')" 401
 ownerContext=$(get auth/me)
 jq -e '.fullName | type == "string" and length > 0' <<< "$ownerContext" >/dev/null ||
   { echo 'Session context must include full name'; exit 1; }
