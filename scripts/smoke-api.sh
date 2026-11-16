@@ -141,6 +141,26 @@ assert_eq "$(status "$TOKEN_CASHIER" POST shifts/open "$(jq -n --arg d "$DESK" '
 assert_eq "$(get shifts/open | jq 'length')" 1
 closeCarried=$(post shifts/close "$(jq -n --arg s "$NEW_SHIFT" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
 assert_eq "$(jq -r .expectedCash <<< "$closeCarried")" 140
+# Concurrent open requests for the SAME cashier must not create two open shifts.
+# Run this against the real PostgreSQL API, not an in-memory database.
+parallelPayload=$(jq -n --arg d "$DESK" '{cashDeskId:$d,openingCash:140}')
+for n in 1 2; do
+  curl --silent --show-error -o "/tmp/mizan-shift-race-$n.json" \
+    -w '%{http_code}' -H "Authorization: Bearer $TOKEN_CASHIER" \
+    -H 'Content-Type: application/json' -X POST "$BASE/api/shifts/open" \
+    -d "$parallelPayload" > "/tmp/mizan-shift-race-$n.status" &
+done
+wait
+race1=$(cat /tmp/mizan-shift-race-1.status)
+race2=$(cat /tmp/mizan-shift-race-2.status)
+[[ ("$race1" == 201 && "$race2" == 400) || ("$race1" == 400 && "$race2" == 201) ]] || {
+  echo "Concurrent shift opens expected exactly one 201 and one 400; got $race1 / $race2"; exit 1;
+}
+assert_eq "$(get shifts/open | jq 'length')" 1
+raceShift=$(get shifts/open | jq -r '.[0].id')
+raceClose=$(post shifts/close "$(jq -n --arg s "$raceShift" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
+assert_eq "$(jq -r .expectedCash <<< "$raceClose")" 140
+rm -f /tmp/mizan-shift-race-{1,2}.{json,status}
 # Owner must not strand a nonzero cash balance by reassigning or disabling the cashier.
 TOKEN="$TOKEN_OWNER"
 cashierGrants='["desks.read","shifts.open","shifts.read","shifts.close","invoices.read","receipts.create","expenses.create"]'
