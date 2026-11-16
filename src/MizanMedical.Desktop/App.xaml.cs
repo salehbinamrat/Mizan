@@ -53,9 +53,17 @@ public partial class App : Application
                 File.AppendAllText(path, "CLIENT: HospitalApi initialized.\n");
                 var login = new LoginWindow();
                 if (login.FindName("ServerAddressText") is null ||
-                    login.FindName("ServerSettingsButton") is null)
+                    login.FindName("ServerSettingsButton") is null ||
+                    login.FindName("HospitalNameBox") is null)
                     throw new InvalidOperationException("Login window controls are missing.");
-                File.AppendAllText(path, "PASS: Mizan Medical WPF login XAML initialized.\n");
+                var firstRun = new FirstRunWindow();
+                if (firstRun.FindName("HospitalNameBox") is null)
+                    throw new InvalidOperationException("First-run hospital name control missing.");
+                var settings = new ServerSettingsWindow();
+                if (settings.FindName("SingleMachineMode") is null ||
+                    settings.FindName("LanMode") is null)
+                    throw new InvalidOperationException("Offline/LAN settings controls missing.");
+                File.AppendAllText(path, "PASS: Mizan Medical WPF login and setup XAML initialized.\n");
                 // A headless CI process must terminate itself. Shutdown() is
                 // dispatcher-driven and can leave a WinExe alive in runner session 0.
                 Environment.Exit(0);

@@ -1,8 +1,8 @@
 <Window x:Class="MizanMedical.Desktop.LoginWindow" 
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="ميزان الطبي — الدخول الموحد" Width="650" Height="735"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        Title="ميزان الطبي — الدخول الموحد" Width="650" Height="710" MinWidth="610" MinHeight="570"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResize"
         FlowDirection="RightToLeft" Background="{StaticResource MedicalCanvas}"
         FontFamily="Segoe UI" Loaded="Window_Loaded" KeyDown="Window_KeyDown">
     <Grid Margin="28">
@@ -18,7 +18,8 @@
             </StackPanel>
         </Border>
         <Border Grid.Row="1" Style="{StaticResource MedicalCard}" CornerRadius="17" Padding="35" Margin="0,16,0,0">
-            <StackPanel VerticalAlignment="Center">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel VerticalAlignment="Center">
                 <TextBlock Text="تسجيل الدخول" FontSize="22" FontWeight="Bold"
                            Foreground="{StaticResource MedicalNavy}" TextAlignment="Center" Margin="0,0,0,8"/>
                 <TextBlock Text="واجهة موحدة للمديرين ومسؤولي الأقسام وجميع الموظفين"
@@ -27,6 +28,9 @@
                 <TextBlock Text="اسم المستخدم" FontWeight="SemiBold" Margin="4,0,0,6"/>
                 <TextBox x:Name="UsernameBox" FlowDirection="LeftToRight" MaxLength="80"
                          HorizontalContentAlignment="Left" Margin="0,0,0,16"/>
+                <TextBlock Text="اسم المستشفى" FontWeight="SemiBold" Margin="4,0,0,6"/>
+                <TextBox x:Name="HospitalNameBox" MaxLength="200"
+                         Margin="0,0,0,16" ToolTip="أدخل اسم المستشفى الذي ثبته المسؤول عند التفعيل الأول"/>
                 <TextBlock Text="كلمة المرور" FontWeight="SemiBold" Margin="4,0,0,6"/>
                 <PasswordBox x:Name="PasswordBox" FlowDirection="LeftToRight"
                              Padding="12,8" Margin="0,0,0,20" MinHeight="41"/>
@@ -54,7 +58,8 @@
                                    TextWrapping="Wrap" Margin="0,5,0,0"/>
                     </StackPanel>
                 </Border>
-            </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
         </Border>
     </Grid>
 </Window>

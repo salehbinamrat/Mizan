@@ -25,4 +25,4 @@ public sealed class InitialOwnerSetupState
 
 public sealed record InitialOwnerSetupRequest(
     string? SetupCode, string? FullName, string? Username,
-    string? Password, string? ConfirmPassword);
+    string? Password, string? ConfirmPassword, string? HospitalName);

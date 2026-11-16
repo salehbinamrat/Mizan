@@ -4,6 +4,7 @@ set -euo pipefail
 BASE="${MIZAN_TEST_URL:-http://127.0.0.1:5081}"
 : "${MIZAN_TEST_ADMIN_USERNAME:?Set test username}"
 : "${MIZAN_TEST_ADMIN_PASSWORD:?Set test password}"
+: "${MIZAN_TEST_HOSPITAL_NAME:?Set test hospital name}"
 assert_eq() {
   [[ "$1" == "$2" ]] && return 0
   # JSON decimals may be serialized as 80.00 while the expected fixture is 80.
@@ -17,10 +18,16 @@ get() { curl --silent --show-error --fail-with-body -H "Authorization: Bearer $T
 status() { curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -H "Authorization: Bearer $1" -X "$2" "$BASE/api/$3" -d "$4"; }
 login() {
   curl --fail-with-body --silent --show-error -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" \
-    -d "$(jq -n --arg u "$1" --arg p "$2" '{username:$u,password:$p}')" | jq -r .token
+    -d "$(jq -n --arg u "$1" --arg p "$2" --arg h "$MIZAN_TEST_HOSPITAL_NAME" '{username:$u,password:$p,hospitalName:$h}')" | jq -r .token
 }
 TOKEN=$(login "$MIZAN_TEST_ADMIN_USERNAME" "$MIZAN_TEST_ADMIN_PASSWORD")
 [[ ${#TOKEN} == 64 ]] || { echo 'Authentication token missing'; exit 1; }
+# A user from the correct server MUST NOT be authenticated under another hospital name.
+wrongHospitalStatus=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -X POST "$BASE/api/auth/login" \
+  -d "$(jq -n --arg u "$MIZAN_TEST_ADMIN_USERNAME" --arg p "$MIZAN_TEST_ADMIN_PASSWORD" \
+  '{username:$u,password:$p,hospitalName:"مستشفى آخر"}')")
+assert_eq "$wrongHospitalStatus" 401
 # On a populated database, first-run owner setup must be permanently closed.
 setupStatus=$(curl --silent --show-error --fail-with-body "$BASE/api/initial-setup/status")
 assert_eq "$(jq -r .required <<< "$setupStatus")" false
@@ -268,7 +275,7 @@ assert_eq "$(status "$TOKEN_CASHIER" POST auth/change-password "$(jq -n --arg ol
 assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_CASHIER" "$BASE/api/auth/me")" 401
 TOKEN_CASHIER_NEW=$(login "$cashierName" "$NEW_CASHIER_PASS")
 [[ ${#TOKEN_CASHIER_NEW} == 64 ]] || { echo 'Password change login failed'; exit 1; }
-assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" -d "$(jq -n --arg u "$cashierName" --arg p "$cashierPass" '{username:$u,password:$p}')")" 401
+assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" -d "$(jq -n --arg u "$cashierName" --arg p "$cashierPass" --arg h "$MIZAN_TEST_HOSPITAL_NAME" '{username:$u,password:$p,hospitalName:$h}')")" 401
 TOKEN="$TOKEN_OWNER"
 request POST auth/logout '{}' >/dev/null || true
 assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_OWNER" "$BASE/api/audit/recent")" 401

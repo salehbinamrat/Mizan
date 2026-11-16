@@ -86,11 +86,11 @@ public sealed class HospitalApi
         response.EnsureSuccessStatusCode();
     }
 
-    public async Task Login(string username, string password)
+    public async Task Login(string username, string hospitalName, string password)
     {
         Staff = null;
         _http.DefaultRequestHeaders.Authorization = null;
-        var result = await Post<LoginResult>("api/auth/login", new { Username = username, Password = password });
+        var result = await Post<LoginResult>("api/auth/login", new { Username = username, HospitalName = hospitalName, Password = password });
         _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", result.Token);
         try
         {
@@ -156,10 +156,10 @@ public sealed class HospitalApi
     public Task<InitialSetupStatusDto> InitialSetupStatus() =>
         Get<InitialSetupStatusDto>("api/initial-setup/status");
 
-    public Task<IdResult> InitializeOwner(string code, string fullName, string username, string password, string confirmation) =>
+    public Task<IdResult> InitializeOwner(string code, string hospitalName, string fullName, string username, string password, string confirmation) =>
         Post<IdResult>("api/initial-setup/complete", new
         {
-            SetupCode = code, FullName = fullName, Username = username,
+            SetupCode = code, HospitalName = hospitalName, FullName = fullName, Username = username,
             Password = password, ConfirmPassword = confirmation
         });
 
@@ -234,7 +234,8 @@ public sealed class HospitalApi
 
 public sealed record InitialSetupStatusDto(bool Required, bool CanInitialize);
 public sealed record LoginUser(Guid Id, string Username, string FullName, string Role,
-    Guid? DepartmentId, bool AllDepartments, bool IsSystemOwner, List<string> Permissions);
+    Guid? DepartmentId, bool AllDepartments, bool IsSystemOwner, List<string> Permissions,
+    string? HospitalName = null);
 public sealed record DepartmentDto(Guid Id, string Code, string Name, int MaxActiveUsers);
 public sealed record DepartmentCapacityDto(Guid Id, int MaxActiveUsers, int ActiveUsers);
 public sealed record StaffUserDto(Guid Id, string Username, string FullName, string Role,

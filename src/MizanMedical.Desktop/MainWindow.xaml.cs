@@ -42,7 +42,7 @@ public partial class MainWindow : Window
         var user = App.Api.Staff ?? throw new InvalidOperationException("يجب تسجيل الدخول أولا.");
         var previousTab = ModulesTabs.SelectedItem as TabItem;
         var authorized = LoginNavigationRules.VisibleModules(user.IsSystemOwner, user.Permissions).ToHashSet();
-        UserLabel.Text = $"{user.FullName} — {LoginNavigationRules.ArabicRole(user.Role, user.IsSystemOwner)}";
+        UserLabel.Text = $"{user.HospitalName ?? "ميزان الطبي"} — {user.FullName} — {LoginNavigationRules.ArabicRole(user.Role, user.IsSystemOwner)}";
 
         DashboardTab.Visibility = authorized.Contains(DesktopModule.Dashboard) ? Visibility.Visible : Visibility.Collapsed;
         PatientsTab.Visibility = authorized.Contains(DesktopModule.Patients) ? Visibility.Visible : Visibility.Collapsed;

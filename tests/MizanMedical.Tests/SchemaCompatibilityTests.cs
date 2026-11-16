@@ -12,6 +12,15 @@ public sealed class SchemaCompatibilityTests
     }
 
     [Fact]
+    public void Previous_schema_missing_hospital_identity_is_blocked_without_silent_reset()
+    {
+        var old = SchemaCompatibilityRules.RequiredColumns
+            .Where(x => x.Table != "HospitalIdentities").ToArray();
+        Assert.Contains(("HospitalIdentities", "Id"), SchemaCompatibilityRules.Missing(old));
+        Assert.Contains(("HospitalIdentities", "Name"), SchemaCompatibilityRules.Missing(old));
+    }
+
+    [Fact]
     public void Old_schema_missing_personal_desk_or_department_limits_is_detected()
     {
         var columns = SchemaCompatibilityRules.RequiredColumns

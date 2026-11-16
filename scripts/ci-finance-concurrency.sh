@@ -6,6 +6,7 @@ set -euo pipefail
 BASE="${MIZAN_TEST_URL:-http://127.0.0.1:5081}"
 : "${MIZAN_TEST_ADMIN_USERNAME:?}"
 : "${MIZAN_TEST_ADMIN_PASSWORD:?}"
+: "${MIZAN_TEST_HOSPITAL_NAME:?}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
@@ -14,7 +15,7 @@ login() {
   # from the prior auth regression suite; production rate limits are unchanged.
   curl --interface 127.0.0.2 --fail-with-body --silent --show-error --max-time 30 \
     -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
-    -d "$(jq -n --arg u "$1" --arg p "$2" '{username:$u,password:$p}')" | jq -r .token
+    -d "$(jq -n --arg u "$1" --arg p "$2" --arg h "$MIZAN_TEST_HOSPITAL_NAME" '{username:$u,password:$p,hospitalName:$h}')" | jq -r .token
 }
 request() {
   curl --fail-with-body --silent --show-error --max-time 30 \

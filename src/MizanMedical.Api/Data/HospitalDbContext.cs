@@ -4,6 +4,7 @@ namespace MizanMedical.Api.Data;
 
 public sealed class HospitalDbContext(DbContextOptions<HospitalDbContext> options) : DbContext(options)
 {
+    public DbSet<HospitalIdentity> HospitalIdentities => Set<HospitalIdentity>();
     public DbSet<StaffUser> StaffUsers => Set<StaffUser>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
@@ -22,6 +23,10 @@ public sealed class HospitalDbContext(DbContextOptions<HospitalDbContext> option
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
+        builder.Entity<HospitalIdentity>().HasKey(x => x.Id);
+        builder.Entity<HospitalIdentity>().Property(x => x.Name).HasMaxLength(200).IsRequired();
+        builder.Entity<HospitalIdentity>().ToTable(t => t.HasCheckConstraint(
+            "CK_HospitalIdentity_Singleton", "\"Id\" = 1"));
         builder.Entity<StaffUser>().HasIndex(x => x.Username).IsUnique();
         builder.Entity<Department>().HasIndex(x => x.Code).IsUnique();
         builder.Entity<Department>().Property(x => x.Code).HasMaxLength(40);
