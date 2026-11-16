@@ -11,6 +11,7 @@ namespace MizanMedical.Desktop;
 public sealed class HospitalApi
 {
     private readonly HttpClient _http;
+    private static readonly TimeSpan InteractiveGetTimeout = TimeSpan.FromSeconds(25);
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     public LoginUser? Staff { get; private set; }
     public bool IsLocalServer => _http.BaseAddress?.IsLoopback == true;
@@ -134,8 +135,11 @@ public sealed class HospitalApi
 
     public async Task<T> Get<T>(string path)
     {
-        using var response = await _http.GetAsync(path);
-        return await Read<T>(response);
+        // Normal list/report requests must fail promptly on an interrupted LAN.
+        // Do not impose this timeout on financial writes or encrypted backups.
+        using var timeout = new CancellationTokenSource(InteractiveGetTimeout);
+        using var response = await _http.GetAsync(path, timeout.Token);
+        return await Read<T>(response, timeout.Token);
     }
 
     public async Task<T> Post<T>(string path, object request)
@@ -150,9 +154,10 @@ public sealed class HospitalApi
         if (!response.IsSuccessStatusCode) await Read<JsonElement>(response);
     }
 
-    private static async Task<T> Read<T>(HttpResponseMessage response)
+    private static async Task<T> Read<T>(HttpResponseMessage response,
+        CancellationToken cancellation = default)
     {
-        string body = await response.Content.ReadAsStringAsync();
+        string body = await response.Content.ReadAsStringAsync(cancellation);
         if (!response.IsSuccessStatusCode)
         {
             string error = $"الخادم أعاد الحالة {(int)response.StatusCode}.";
