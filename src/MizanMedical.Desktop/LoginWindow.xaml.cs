@@ -12,29 +12,59 @@ public partial class LoginWindow : Window
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         UsernameBox.Focus();
+        await RefreshServerState();
+    }
+
+    private async Task RefreshServerState()
+    {
+        ServerAddressText.Text = App.Api.ServerAddress;
+        FirstSetupButton.Visibility = Visibility.Collapsed;
+        LoginButton.IsEnabled = true;
+        if (App.Api.ConfigurationIssue is { Length: > 0 } warning)
+        {
+            StatusText.Text = warning;
+            LoginButton.IsEnabled = false;
+            return;
+        }
+        StatusText.Text = "جار التحقق من الاتصال بالخادم...";
         try
         {
             var state = await App.Api.InitialSetupStatus();
+            StatusText.Text = "تم الاتصال بخادم ميزان الطبي بنجاح.";
             if (state.Required)
             {
                 LoginButton.IsEnabled = false;
                 if (state.CanInitialize && App.Api.IsLocalServer)
                 {
                     FirstSetupButton.Visibility = Visibility.Visible;
-                    StatusText.Text = "هذه قاعدة جديدة. أنشئ حساب مسؤول البرنامج الأول باستخدام رمز التهيئة المعروض على جهاز الخادم.";
+                    StatusText.Text = "خادم جديد: أنشئ حساب المسؤول الأول برمز التهيئة المعروض على جهاز الخادم.";
                 }
                 else
-                    StatusText.Text = "لم يكتمل إعداد مسؤول البرنامج. يرجى تشغيل معالج التهيئة من جهاز الخادم نفسه.";
+                    StatusText.Text = "خادم ميزان الطبي لم يهيئ حساب المسؤول الأول بعد. افتح المعالج من جهاز الخادم.";
             }
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException ex)
         {
-            // The login action will display connectivity errors when requested.
+            StartupDiagnostics.Record("server-unreachable", ex);
+            StatusText.Text = "تعذر الاتصال بالخادم. تأكد من تشغيل خدمة API وصحة العنوان وشهادة HTTPS.";
         }
-        catch (Exception)
+        catch (TaskCanceledException ex)
         {
-            // Older servers without this endpoint still support normal login.
+            StartupDiagnostics.Record("server-timeout", ex);
+            StatusText.Text = "انتهت مهلة الاتصال. تحقق من الشبكة والخادم.";
         }
+        catch (Exception ex)
+        {
+            StartupDiagnostics.Record("server-initialization-check", ex);
+            StatusText.Text = "لم يمكن التحقق من خادم ميزان الطبي. راجع الإعدادات وسجل التشخيص.";
+        }
+    }
+
+    private async void ServerSettings_Click(object sender, RoutedEventArgs e)
+    {
+        var window = new ServerSettingsWindow { Owner = this };
+        if (window.ShowDialog() == true)
+            await RefreshServerState();
     }
 
     private async void FirstSetup_Click(object sender, RoutedEventArgs e)
@@ -97,9 +127,10 @@ public partial class LoginWindow : Window
         {
             StatusText.Text = "انتهت مهلة الاتصال بالخادم. حاول مجددا.";
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            StatusText.Text = "تعذر تسجيل الدخول. تحقق من البيانات أو صلاحية الحساب واتصل بالمسؤول.";
+            StartupDiagnostics.Record("login-failure", ex);
+            StatusText.Text = "تعذر تسجيل الدخول. تحقق من البيانات أو صلاحية الحساب، أو راجع سجل التشخيص.";
         }
         finally
         {
