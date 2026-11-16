@@ -275,7 +275,7 @@ assert_eq "$(status "$TOKEN_CASHIER" POST auth/change-password "$(jq -n --arg ol
 assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_CASHIER" "$BASE/api/auth/me")" 401
 TOKEN_CASHIER_NEW=$(login "$cashierName" "$NEW_CASHIER_PASS")
 [[ ${#TOKEN_CASHIER_NEW} == 64 ]] || { echo 'Password change login failed'; exit 1; }
-assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" -d "$(jq -n --arg u "$cashierName" --arg p "$cashierPass" '{username:$u,password:$p}')")" 401
+assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -X POST "$BASE/api/auth/login" -d "$(jq -n --arg u "$cashierName" --arg p "$cashierPass" --arg h "$MIZAN_TEST_HOSPITAL_NAME" '{username:$u,password:$p,hospitalName:$h}')")" 401
 TOKEN="$TOKEN_OWNER"
 request POST auth/logout '{}' >/dev/null || true
 assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN_OWNER" "$BASE/api/audit/recent")" 401
