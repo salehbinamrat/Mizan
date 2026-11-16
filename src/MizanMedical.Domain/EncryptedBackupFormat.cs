@@ -100,6 +100,60 @@ public static class EncryptedBackupFormat
         finally { CryptographicOperations.ZeroMemory(key); }
     }
 
+    /// <summary>
+    /// Decrypt an authenticated archive. For database restoration verify the entire
+    /// archive BEFORE calling this method so a corrupted backup cannot partially
+    /// overwrite a target database.
+    /// </summary>
+    public static async Task DecryptAsync(Stream source, Stream destination, string password,
+        CancellationToken cancellation = default)
+    {
+        ValidatePassphrase(password);
+        var header = new byte[Header.Length];
+        await source.ReadExactlyAsync(header, cancellation);
+        if (!header.AsSpan().SequenceEqual(Header))
+            throw new InvalidDataException("Invalid backup header.");
+        byte[] salt = new byte[16];
+        await source.ReadExactlyAsync(salt, cancellation);
+        int iterations = await ReadIntAsync(source, cancellation);
+        if (iterations != Iterations)
+            throw new InvalidDataException("Unsupported backup format version.");
+        byte[] key = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations,
+            HashAlgorithmName.SHA256, 32);
+        try
+        {
+            using var aes = new AesGcm(key, 16);
+            byte[] encrypted = new byte[ChunkSize];
+            byte[] plain = new byte[ChunkSize];
+            byte[] nonce = new byte[12];
+            byte[] tag = new byte[16];
+            long index = 0;
+            while (true)
+            {
+                int size = await ReadIntAsync(source, cancellation);
+                if (size < -1 || size > ChunkSize)
+                    throw new InvalidDataException("Invalid backup chunk size.");
+                await source.ReadExactlyAsync(nonce, cancellation);
+                await source.ReadExactlyAsync(tag, cancellation);
+                if (size == -1)
+                {
+                    aes.Decrypt(nonce, ReadOnlySpan<byte>.Empty, tag,
+                        Span<byte>.Empty, AssociatedData(index, true));
+                    if (await source.ReadAsync(encrypted.AsMemory(0, 1), cancellation) != 0)
+                        throw new InvalidDataException("Unexpected trailing backup bytes.");
+                    await destination.FlushAsync(cancellation);
+                    return;
+                }
+                await source.ReadExactlyAsync(encrypted.AsMemory(0, size), cancellation);
+                aes.Decrypt(nonce, encrypted.AsSpan(0, size), tag,
+                    plain.AsSpan(0, size), AssociatedData(index, false));
+                await destination.WriteAsync(plain.AsMemory(0, size), cancellation);
+                index++;
+            }
+        }
+        finally { CryptographicOperations.ZeroMemory(key); }
+    }
+
     private static byte[] AssociatedData(long index, bool isFinal)
     {
         byte[] data = new byte[9];
