@@ -21,6 +21,10 @@ login() {
 }
 TOKEN=$(login "$MIZAN_TEST_ADMIN_USERNAME" "$MIZAN_TEST_ADMIN_PASSWORD")
 [[ ${#TOKEN} == 64 ]] || { echo 'Authentication token missing'; exit 1; }
+ownerContext=$(get auth/me)
+jq -e '.fullName | type == "string" and length > 0' <<< "$ownerContext" >/dev/null ||
+  { echo 'Session context must include full name'; exit 1; }
+assert_eq "$(jq -r .isSystemOwner <<< "$ownerContext")" true
 seed="$(date +%s)-$RANDOM"
 ward=$(post departments "$(jq -n --arg code "A$RANDOM" '{code:$code,name:"الطوارئ",maxActiveUsers:2}')")
 lab=$(post departments "$(jq -n --arg code "B$RANDOM" '{code:$code,name:"المختبر"}')")
@@ -35,6 +39,13 @@ cashier=$(post users "$(jq -n --arg u "$cashierName" --arg d "$WARD" --arg pw "$
 CASHIER_ID=$(jq -r .id <<< "$cashier")
 TOKEN_CASHIER=$(login "$cashierName" "$cashierPass")
 TOKEN="$TOKEN_CASHIER"
+cashierContext=$(get auth/me)
+assert_eq "$(jq -r .role <<< "$cashierContext")" Cashier
+assert_eq "$(jq -r .departmentId <<< "$cashierContext")" "$WARD"
+assert_eq "$(jq -r .allDepartments <<< "$cashierContext")" false
+if jq -e '.permissions | index("users.manage") != null' <<< "$cashierContext" >/dev/null; then
+  echo 'Cashier must not receive owner administration permission' >&2; exit 1
+fi
 desk=$(get cash-desks | jq '.[0]'); DESK=$(jq -r .id <<< "$desk")
 assert_eq "$(jq -r .ownerUserId <<< "$desk")" "$CASHIER_ID"
 shift=$(post shifts/open "$(jq -n --arg id "$DESK" '{cashDeskId:$id,openingCash:100}')")
