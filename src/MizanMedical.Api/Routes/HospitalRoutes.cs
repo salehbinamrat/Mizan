@@ -56,6 +56,7 @@ public static class HospitalRoutes
         secured.MapPost("/expenses", AddExpense).RequireAuthorization(HospitalPermissions.ExpensesCreate);
         secured.MapGet("/reports/daily", DailyReport).RequireAuthorization(HospitalPermissions.ReportsRead);
         secured.MapGet("/audit/recent", AuditRecent).RequireAuthorization(HospitalPermissions.AuditRead);
+        secured.MapPost("/admin/backup/download", DownloadBackup).RequireAuthorization(HospitalPermissions.UsersManage);
     }
 
     private static string ValidText(string? value, string field, int max = 200)
@@ -696,6 +697,22 @@ public static class HospitalRoutes
             .OrderByDescending(x => x.RecordedAtUtc).Take(100).ToListAsync());
     }
 
+    private static async Task<IResult> DownloadBackup(BackupRequest input, HttpContext http,
+        ClaimsPrincipal staff, HospitalDbContext db)
+    {
+        if (!DepartmentClaims.IsOwner(staff)) return Results.Forbid();
+        if (string.IsNullOrWhiteSpace(input.Passphrase) || input.Passphrase.Length < 16)
+            throw new DomainException("كلمة تشفير النسخة لا تقل عن 16 حرفا.");
+        string database = Environment.GetEnvironmentVariable("MIZAN_DB_CONNECTION")
+            ?? throw new InvalidOperationException("Database connection missing.");
+        db.AuditEvents.Add(Audit(staff, "backup.full.export.request", "database", Guid.Empty));
+        await db.SaveChangesAsync();
+        return Results.Stream(stream => BackupExportService.ExportAsync(stream, database,
+            input.Passphrase, http.RequestAborted), "application/octet-stream",
+            $"Mizan-Full-{DateTime.UtcNow:yyyyMMdd-HHmmss}.mizanbak");
+    }
+
+    public sealed record BackupRequest(string Passphrase);
     public sealed record LoginRequest(string Username, string Password);
     public sealed record CreateDepartmentRequest(string Code, string Name, int MaxActiveUsers = 20);
     public sealed record DepartmentLimitRequest(int MaxActiveUsers);
