@@ -16,8 +16,13 @@ public static class PasswordSecurity
         return (Convert.ToBase64String(key), Convert.ToBase64String(salt));
     }
 
+    public static bool IsAcceptableLoginPassword(string? password) =>
+        !string.IsNullOrWhiteSpace(password) && password.Length <= 128;
+
     public static bool Verify(string password, string storedHash, string storedSalt)
     {
+        // Do not perform expensive PBKDF2 on oversized untrusted input.
+        if (!IsAcceptableLoginPassword(password)) return false;
         try
         {
             byte[] salt = Convert.FromBase64String(storedSalt);

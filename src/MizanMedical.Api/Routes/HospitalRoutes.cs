@@ -99,7 +99,8 @@ public static class HospitalRoutes
     private static async Task<IResult> Login(LoginRequest request, HospitalDbContext db, ILoggerFactory loggerFactory)
     {
         string username = (request.Username ?? "").Trim().ToLowerInvariant();
-        if (username.Length is < 3 or > 80 || request.Password is null)
+        if (username.Length is < 3 or > 80 ||
+            !PasswordSecurity.IsAcceptableLoginPassword(request.Password))
             return Results.Unauthorized();
         var user = await db.StaffUsers.FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
         var now = DateTime.UtcNow;
