@@ -510,7 +510,13 @@ public static class HospitalRoutes
     private static async Task<IResult> OpenShift(OpenShiftRequest input, HospitalDbContext db, ClaimsPrincipal staff)
     {
         FinanceRules.RequireNonNegativeMoney(input.OpeningCash, "رصيد افتتاح الصندوق");
-        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        // PostgreSQL transaction-scoped lock serializes opens for one cashier across
+        // API instances. ReadCommitted ensures the waiting request sees the committed
+        // first shift and returns a domain error instead of a serialization 500.
+        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        Guid cashierId = CurrentStaff.Id(staff);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({cashierId.ToString("N")}, 0))");
         var desk = await db.CashDesks.AsNoTracking()
             .FirstOrDefaultAsync(x => x.Id == RequiredId(input.CashDeskId) && x.IsActive);
         if (desk is null || !DepartmentScope.CanSee(staff, desk.DepartmentId) ||
