@@ -7,6 +7,7 @@ namespace MizanMedical.Desktop;
 public partial class FirstRunWindow : Window
 {
     public string CreatedUsername { get; private set; } = "";
+    public string CreatedHospitalName { get; private set; } = "";
 
     public FirstRunWindow() => InitializeComponent();
 
@@ -16,8 +17,10 @@ public partial class FirstRunWindow : Window
         string password = PasswordBox.Password;
         string confirmation = ConfirmPasswordBox.Password;
         string normalized;
+        string hospitalName;
         try
         {
+            hospitalName = HospitalIdentityRules.Normalize(HospitalNameBox.Text);
             normalized = InitialOwnerSetupRules.Validate(FullNameBox.Text,
                 UsernameBox.Text, password, confirmation);
             if (string.IsNullOrWhiteSpace(PairingCodeBox.Password))
@@ -31,9 +34,10 @@ public partial class FirstRunWindow : Window
         CreateButton.IsEnabled = false;
         try
         {
-            await App.Api.InitializeOwner(PairingCodeBox.Password,
+            await App.Api.InitializeOwner(PairingCodeBox.Password, hospitalName,
                 FullNameBox.Text.Trim(), normalized, password, confirmation);
             CreatedUsername = normalized;
+            CreatedHospitalName = hospitalName;
             DialogResult = true;
         }
         catch (HttpRequestException)

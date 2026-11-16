@@ -6,7 +6,7 @@ namespace MizanMedical.Tests;
 /// <summary>
 /// Hospital identity is set once on the local server, never chosen by a remote caller.
 /// These tests deliberately precede the implementation.
-</summary>
+/// </summary>
 public sealed class HospitalIdentityRulesTests
 {
     [Theory]

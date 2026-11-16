@@ -77,6 +77,7 @@ public partial class LoginWindow : Window
             {
                 FirstSetupButton.Visibility = Visibility.Collapsed;
                 UsernameBox.Text = wizard.CreatedUsername;
+                HospitalNameBox.Text = wizard.CreatedHospitalName;
                 LoginButton.IsEnabled = true;
                 StatusText.Text = "تم إنشاء حساب المسؤول الرئيسي. سجل الدخول باستخدام كلمة المرور التي حددتها.";
                 PasswordBox.Focus();
@@ -97,16 +98,17 @@ public partial class LoginWindow : Window
     private async void Login_Click(object sender, RoutedEventArgs e)
     {
         string username = UsernameBox.Text.Trim();
-        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(PasswordBox.Password))
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(HospitalNameBox.Text) ||
+            string.IsNullOrWhiteSpace(PasswordBox.Password))
         {
-            StatusText.Text = "أدخل اسم المستخدم وكلمة المرور.";
+            StatusText.Text = "أدخل اسم المستخدم واسم المستشفى وكلمة المرور.";
             return;
         }
         LoginButton.IsEnabled = false;
         StatusText.Text = "جار التحقق من الحساب والصلاحيات...";
         try
         {
-            await App.Api.Login(username, PasswordBox.Password);
+            await App.Api.Login(username, HospitalNameBox.Text, PasswordBox.Password);
             var staff = App.Api.Staff;
             if (staff is null || LoginNavigationRules.LandingModule(staff.Role, staff.IsSystemOwner, staff.Permissions) is null)
             {
