@@ -205,4 +205,5 @@ public sealed record InvoiceCreated(Guid Id, string InvoiceNumber, decimal Total
 public sealed record ShiftClosed(Guid Id, decimal OpeningCash, decimal ExpectedCash, decimal CountedCash, decimal Variance, DateTime ClosedAtUtc);
 
 public sealed record PersonalDeskSummaryDto(Guid Id, string Name, Guid? DepartmentId, Guid? ShiftId,
-    decimal OpeningCash, decimal Received, decimal Spent, decimal Expected);
+    decimal OpeningCash, decimal Received, decimal Spent, decimal Expected,
+    decimal? NextOpeningCash = null, bool IsFirstShift = false);
