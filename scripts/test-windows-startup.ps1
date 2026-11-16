@@ -1,8 +1,21 @@
-param([string]$OutputRoot = "artifacts")
+param([string]$OutputRoot = "artifacts", [string]$SingleExe = "")
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $artifacts = Join-Path $root $OutputRoot
+
+function Write-StartupFailureDiagnostics([string] $marker, [string] $label) {
+    if (Test-Path -LiteralPath $marker) {
+        Write-Output ("Startup probe stage for $label : " + (Get-Content -Raw -LiteralPath $marker))
+    } else {
+        Write-Output "Startup smoke never entered App.OnStartup for $label"
+    }
+    $log = Join-Path $env:LOCALAPPDATA 'MizanMedical\logs\startup.log'
+    if (Test-Path -LiteralPath $log) {
+        Write-Output "Recent WPF startup errors:"
+        Get-Content -LiteralPath $log -Tail 35 | Write-Output
+    }
+}
 
 function Assert-Startup([string] $executable, [string] $label) {
     if (!(Test-Path -LiteralPath $executable)) { throw "Missing executable: $executable" }
@@ -11,21 +24,13 @@ function Assert-Startup([string] $executable, [string] $label) {
     try {
         $proc = Start-Process -FilePath $executable -ArgumentList '--startup-smoke' -PassThru
         if (!$proc.WaitForExit(45000)) {
-            if (Test-Path -LiteralPath $marker) {
-                Write-Output ("Startup smoke diagnostic: " + (Get-Content -Raw -LiteralPath $marker))
-            }
-            else {
-                Write-Output "Startup smoke never reached App.OnStartup for $label"
-            }
-            $log = Join-Path $env:LOCALAPPDATA 'MizanMedical\logs\startup.log'
-            if (Test-Path -LiteralPath $log) {
-                Get-Content -LiteralPath $log -Tail 20 | Write-Output
-            }
+            Write-StartupFailureDiagnostics $marker $label
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             throw "Windows application startup hung: $label"
         }
         $proc.Refresh()
         if ($proc.ExitCode -ne 0) {
+            Write-StartupFailureDiagnostics $marker $label
             throw "Windows application failed startup smoke: $label ExitCode=$($proc.ExitCode)"
         }
         if (!(Test-Path -LiteralPath $marker) -or
@@ -38,6 +43,11 @@ function Assert-Startup([string] $executable, [string] $label) {
         Remove-Item Env:\MIZAN_STARTUP_PROBE_FILE -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $marker -Force -ErrorAction SilentlyContinue
     }
+}
+
+if ($SingleExe) {
+    Assert-Startup (Resolve-Path -LiteralPath $SingleExe).Path 'Windows Core early x86 preflight'
+    return
 }
 
 foreach ($architecture in @('win-x86', 'win-x64')) {

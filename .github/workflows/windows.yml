@@ -24,6 +24,11 @@ jobs:
         run: dotnet build MizanMedical.slnx --configuration Release --no-restore
       - name: Run automated tests
         run: dotnet test tests/MizanMedical.Tests/MizanMedical.Tests.csproj --configuration Release --no-build
+      - name: Publish x86 executable for immediate startup diagnosis
+        run: dotnet publish src/MizanMedical.Desktop/MizanMedical.Desktop.csproj --configuration Release --runtime win-x86 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true --output artifacts/preflight-x86
+      - name: Launch x86 WPF startup smoke before packaging
+        shell: pwsh
+        run: ./scripts/test-windows-startup.ps1 -SingleExe artifacts/preflight-x86/MizanMedical.Desktop.exe
 
   windows-release:
     name: Windows Release
