@@ -1,5 +1,12 @@
 namespace MizanMedical.Api.Data;
 
+/// <summary>One immutable hospital identity per locally deployed server.</summary>
+public sealed class HospitalIdentity
+{
+    public int Id { get; set; } = 1;
+    public string Name { get; set; } = "";
+}
+
 public enum HospitalRole { Admin, Manager, DepartmentManager, Accountant, Cashier, Receptionist }
 
 public sealed class Department

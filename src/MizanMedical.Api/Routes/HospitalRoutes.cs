@@ -19,9 +19,10 @@ public static class HospitalRoutes
         var api = app.MapGroup("/api");
         api.MapPost("/auth/login", Login).AllowAnonymous().RequireRateLimiting("login");
         var secured = api.MapGroup("").RequireAuthorization();
-        secured.MapGet("/auth/me", (ClaimsPrincipal staff) => Results.Ok(new
+        secured.MapGet("/auth/me", async (ClaimsPrincipal staff, HospitalDbContext db) => Results.Ok(new
         {
             Id = CurrentStaff.Id(staff), Username = staff.Identity?.Name,
+            HospitalName = await db.HospitalIdentities.Select(x => x.Name).SingleAsync(),
             Name = staff.FindFirstValue("display_name"), FullName = staff.FindFirstValue("display_name"),
             Role = staff.FindFirstValue(ClaimTypes.Role),
             DepartmentId = DepartmentClaims.Department(staff), AllDepartments = DepartmentClaims.HasGlobalScope(staff),
@@ -110,6 +111,11 @@ public static class HospitalRoutes
         string username = (request.Username ?? "").Trim().ToLowerInvariant();
         if (username.Length is < 3 or > 80 ||
             !PasswordSecurity.IsAcceptableLoginPassword(request.Password))
+            return Results.Unauthorized();
+        // Name is a hospital-local context selector, not an authorization bypass.
+        // Return the same generic 401 for wrong hospital or incorrect credentials.
+        string? configuredHospital = await db.HospitalIdentities.Select(x => x.Name).SingleOrDefaultAsync();
+        if (!HospitalIdentityRules.Matches(configuredHospital, request.HospitalName))
             return Results.Unauthorized();
         var user = await db.StaffUsers.FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
         var now = DateTime.UtcNow;
@@ -837,7 +843,7 @@ public static class HospitalRoutes
     }
 
     public sealed record BackupRequest(string Passphrase);
-    public sealed record LoginRequest(string Username, string Password);
+    public sealed record LoginRequest(string Username, string Password, string? HospitalName);
     public sealed record ChangePasswordRequest(string? CurrentPassword, string? NewPassword, string? ConfirmPassword);
     public sealed record CreateDepartmentRequest(string Code, string Name, int MaxActiveUsers = 20);
     public sealed record DepartmentLimitRequest(int MaxActiveUsers);

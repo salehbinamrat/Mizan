@@ -63,7 +63,10 @@ using (var scope = app.Services.CreateScope())
         {
             string normalized = InitialOwnerSetupRules.Validate("مدير النظام", initialName,
                 initialPassword, initialPassword);
+            string hospitalName = HospitalIdentityRules.Normalize(
+                Environment.GetEnvironmentVariable("MIZAN_BOOTSTRAP_HOSPITAL_NAME"));
             var (hash, salt) = PasswordSecurity.Create(initialPassword);
+            db.HospitalIdentities.Add(new HospitalIdentity { Name = hospitalName });
             db.StaffUsers.Add(new StaffUser
             {
                 Username = normalized, FullName = "مدير النظام",
@@ -93,6 +96,13 @@ using (var scope = app.Services.CreateScope())
             Console.WriteLine("It expires when the server stops or after the owner is created.");
             Console.WriteLine("==============================================");
         }
+    }
+    else if (!await db.HospitalIdentities.AnyAsync())
+    {
+        // Legacy databases must be upgraded by an approved migration before use.
+        throw new InvalidOperationException(
+            "Hospital identity is not configured. Do not reset staff accounts. " +
+            "Apply the reviewed hospital-identity migration and set the hospital name.");
     }
 }
 
@@ -178,6 +188,7 @@ app.MapPost("/api/initial-setup/complete", async (
 
     string username = InitialOwnerSetupRules.Validate(
         request.FullName, request.Username, request.Password, request.ConfirmPassword);
+    string hospitalName = HospitalIdentityRules.Normalize(request.HospitalName);
     var (hash, salt) = PasswordSecurity.Create(request.Password!);
     var owner = new StaffUser
     {
@@ -185,6 +196,7 @@ app.MapPost("/api/initial-setup/complete", async (
         Role = HospitalRole.Admin, IsSystemOwner = true, AllDepartments = true,
         PasswordHash = hash, PasswordSalt = salt
     };
+    db.HospitalIdentities.Add(new HospitalIdentity { Name = hospitalName });
     db.StaffUsers.Add(owner);
     await db.SaveChangesAsync();
     await transaction.CommitAsync();

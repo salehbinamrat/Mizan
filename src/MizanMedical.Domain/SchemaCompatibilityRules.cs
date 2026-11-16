@@ -8,6 +8,7 @@ public static class SchemaCompatibilityRules
 {
     public static readonly IReadOnlyList<(string Table, string Column)> RequiredColumns =
     [
+        ("HospitalIdentities", "Id"), ("HospitalIdentities", "Name"),
         ("Departments", "Id"), ("Departments", "MaxActiveUsers"),
         ("StaffUsers", "Id"), ("StaffUsers", "Username"), ("StaffUsers", "IsSystemOwner"),
         ("StaffUsers", "DepartmentId"), ("StaffUsers", "AllDepartments"),
