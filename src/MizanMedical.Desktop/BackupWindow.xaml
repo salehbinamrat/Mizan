@@ -1,0 +1,24 @@
+<Window x:Class="MizanMedical.Desktop.BackupWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ميزان الطبي — تنزيل قاعدة بيانات المستشفى" Width="680" Height="475"
+        ResizeMode="NoResize" WindowStartupLocation="CenterOwner"
+        FlowDirection="RightToLeft" FontFamily="Segoe UI" Background="#F1F6F8">
+    <Border Margin="20" Background="White" Padding="20" CornerRadius="10">
+        <StackPanel>
+            <TextBlock Text="نسخة احتياطية شاملة ومشفرة" FontSize="22" FontWeight="Bold" Foreground="#1C5565"/>
+            <TextBlock Margin="0,13,0,10" TextWrapping="Wrap"
+                Text="تحتوي النسخة على جميع الأقسام والمستخدمين والصلاحيات والفواتير والمصروفات والقيود وسجلات التدقيق. لا تخزن كلمة التشفير داخل البرنامج. احتفظ بها في مكان آمن."/>
+            <TextBlock Text="كلمة تشفير قوية (16 حرفا على الأقل)"/>
+            <PasswordBox x:Name="PassphraseBox" Margin="0,5,0,8" FontSize="15"/>
+            <TextBlock Text="تأكيد كلمة التشفير"/>
+            <PasswordBox x:Name="ConfirmationBox" Margin="0,5,0,12" FontSize="15"/>
+            <TextBlock Text="اختر مجلدا على الكمبيوتر أو القرص الخارجي. لا تغلق البرنامج أثناء التنزيل." TextWrapping="Wrap" Foreground="#5A727C" Margin="0,2,0,10"/>
+            <WrapPanel>
+                <Button x:Name="SaveButton" Content="اختيار المجلد وتنزيل النسخة" Click="Save_Click" Background="#207B6C" Foreground="White" Padding="14,8" Margin="0,0,8,0"/>
+                <Button Content="إغلاق" Click="Close_Click" Padding="14,8"/>
+            </WrapPanel>
+            <TextBlock x:Name="StatusText" Margin="0,15,0,0" TextWrapping="Wrap" Foreground="#1F5C63"/>
+        </StackPanel>
+    </Border>
+</Window>

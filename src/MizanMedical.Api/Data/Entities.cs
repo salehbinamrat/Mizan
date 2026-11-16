@@ -8,6 +8,7 @@ public sealed class Department
     public string Code { get; set; } = "";
     public string Name { get; set; } = "";
     public bool IsActive { get; set; } = true;
+    public int MaxActiveUsers { get; set; } = 20;
 }
 
 public sealed class UserPermission
@@ -69,6 +70,7 @@ public sealed class CashDesk
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid? DepartmentId { get; set; }
+    public Guid? OwnerUserId { get; set; }
     public string Name { get; set; } = "";
     public bool IsActive { get; set; } = true;
 }

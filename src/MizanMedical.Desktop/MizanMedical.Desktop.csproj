@@ -8,6 +8,9 @@
     <RootNamespace>MizanMedical.Desktop</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../MizanMedical.Domain/MizanMedical.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="mizan-client.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
