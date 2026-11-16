@@ -116,11 +116,16 @@ app.Use(async (context, next) =>
         await Results.Problem(statusCode: 409, title: "تعارض في البيانات", detail: "قد تكون العملية مكررة أو تغيرت البيانات. حدث الصفحة وتحقق من النتيجة قبل إعادة المحاولة.")
             .ExecuteAsync(context);
     }
-    catch (PostgresException ex) when (!context.Response.HasStarted && (ex.SqlState == "40001" || ex.SqlState == "40P01" || ex.SqlState == "23505"))
+    catch (Exception ex) when (!context.Response.HasStarted &&
+        PostgreSqlTransactionConflictClassifier.IsConflict(ex))
     {
+        // PostgreSQL may reject one of two simultaneous monetary operations with
+        // SQLSTATE 40001 wrapped by EF Core in InvalidOperationException.
+        // Do not retry a write here: the client must check the original request ID.
         context.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("Database").LogWarning(ex, "Concurrent transaction conflict");
-        await Results.Problem(statusCode: 409, title: "تعارض عمليات متزامنة", detail: "تحقق من العملية السابقة قبل إعادة الإرسال.")
+        await Results.Problem(statusCode: 409, title: "تعارض عمليات متزامنة",
+            detail: "لم تُعتمد هذه العملية بسبب تعارض متزامن. تحقق من السجل ومعرف الطلب قبل إعادة الإرسال.")
             .ExecuteAsync(context);
     }
 });

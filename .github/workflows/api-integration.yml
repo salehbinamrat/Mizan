@@ -69,4 +69,5 @@ jobs:
           done
           if [ "$ready" != "1" ]; then echo 'API failed to start'; exit 1; fi
           bash scripts/smoke-api.sh
+          bash scripts/ci-finance-concurrency.sh
           bash scripts/ci-encrypted-restore.sh
