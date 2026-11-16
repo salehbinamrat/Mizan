@@ -69,6 +69,15 @@ public static class HospitalRoutes
         return value;
     }
 
+    private static Task AcquireFinancialLock(HospitalDbContext db, string kind, Guid id)
+    {
+        // PostgreSQL releases this transaction-scoped advisory lock at commit/rollback.
+        // Always lock request -> shift -> invoice to avoid lock-order cycles.
+        string lockName = FinancialLockScope.Key(kind, id);
+        return db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtextextended({lockName}, 0))");
+    }
+
     private static Guid RequiredId(Guid id)
     {
         if (id == Guid.Empty) throw new DomainException("المعرف غير صالح.");
@@ -562,7 +571,9 @@ public static class HospitalRoutes
     private static async Task<IResult> CloseShift(CloseShiftRequest input, HospitalDbContext db, ClaimsPrincipal staff)
     {
         FinanceRules.RequireNonNegativeMoney(input.CountedCash, "النقد الفعلي");
-        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        // Competes with receipts and expenses for exactly the same shift.
+        await AcquireFinancialLock(db, "shift", RequiredId(input.ShiftId));
         var shift = await db.CashShifts.FirstOrDefaultAsync(x => x.Id == RequiredId(input.ShiftId));
         if (shift is null || !DepartmentScope.CanSee(staff, shift.DepartmentId) || shift.ClosedAtUtc is not null || shift.CashierId != CurrentStaff.Id(staff))
             throw new DomainException("هذه المناوبة ليست مفتوحة لحسابك.");
@@ -690,7 +701,13 @@ public static class HospitalRoutes
     {
         RequireRequestId(input.RequestId);
         FinanceRules.RequirePositiveMoney(input.Amount, "المبلغ المحصل");
-        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        // The replay key serializes retries even when submitted from different shifts.
+        // The shift key serializes cash posting with shift closure and expenses.
+        // The invoice key serializes payments from different cashiers/shifts.
+        await AcquireFinancialLock(db, "receipt-request", input.RequestId);
+        await AcquireFinancialLock(db, "shift", RequiredId(input.ShiftId));
+        await AcquireFinancialLock(db, "invoice", RequiredId(input.InvoiceId));
         var previous = await db.CashReceipts.AsNoTracking().FirstOrDefaultAsync(x => x.RequestId == input.RequestId);
         if (previous is not null)
         {
@@ -730,7 +747,9 @@ public static class HospitalRoutes
         FinanceRules.RequirePositiveMoney(input.Amount, "المصروف");
         string category = ValidText(input.Category, "نوع المصروف", 100);
         string description = ValidText(input.Description, "بيان المصروف", 500);
-        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        await using var trx = await db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted);
+        await AcquireFinancialLock(db, "expense-request", input.RequestId);
+        await AcquireFinancialLock(db, "shift", RequiredId(input.ShiftId));
         var previous = await db.CashExpenses.AsNoTracking().FirstOrDefaultAsync(x => x.RequestId == input.RequestId);
         if (previous is not null)
         {
