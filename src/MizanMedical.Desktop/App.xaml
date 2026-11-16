@@ -3,46 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="LoginWindow.xaml" ShutdownMode="OnMainWindowClose">
     <Application.Resources>
-        <SolidColorBrush x:Key="Ocean" Color="#086A80"/>
-        <SolidColorBrush x:Key="Silver" Color="#EDF3F6"/>
-        <Style TargetType="Button">
-            <Setter Property="Background" Value="{StaticResource Ocean}"/>
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Padding" Value="13,9"/>
-            <Setter Property="Margin" Value="4"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="MinHeight" Value="38"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Padding" Value="8"/>
-            <Setter Property="Margin" Value="4"/>
-            <Setter Property="MinHeight" Value="36"/>
-        </Style>
-        <Style TargetType="ComboBox">
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Padding" Value="7"/>
-            <Setter Property="Margin" Value="4"/>
-            <Setter Property="MinHeight" Value="36"/>
-        </Style>
-        <Style TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="Segoe UI"/>
-        </Style>
-        <Style TargetType="TabItem">
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="Padding" Value="12,8"/>
-        </Style>
-        <Style TargetType="DataGrid">
-            <Setter Property="AutoGenerateColumns" Value="True"/>
-            <Setter Property="IsReadOnly" Value="True"/>
-            <Setter Property="CanUserAddRows" Value="False"/>
-            <Setter Property="CanUserDeleteRows" Value="False"/>
-            <Setter Property="Margin" Value="5"/>
-            <Setter Property="RowHeight" Value="34"/>
-            <Setter Property="HeadersVisibility" Value="Column"/>
-            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
-        </Style>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/MedicalTheme.xaml"/>
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Application.Resources>
 </Application>

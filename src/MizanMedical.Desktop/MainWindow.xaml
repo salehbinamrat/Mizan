@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="ميزان الطبي — الإدارة المالية" Width="1380" Height="880" MinWidth="1100" MinHeight="700"
-        WindowStartupLocation="CenterScreen" Background="#F0F5F8" FontFamily="Segoe UI"
+        WindowStartupLocation="CenterScreen" Background="{StaticResource MedicalCanvas}" FontFamily="Segoe UI"
         FlowDirection="RightToLeft" Loaded="Window_Loaded">
     <DockPanel>
-        <Border DockPanel.Dock="Top" Background="#143F55" Height="94">
+        <Border DockPanel.Dock="Top" Background="{StaticResource MedicalNavy}" BorderBrush="#0BA4B1" BorderThickness="0,0,0,4" Height="94">
             <Grid Margin="26,0">
                 <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
@@ -22,10 +22,10 @@
                 </StackPanel>
             </Grid>
         </Border>
-        <Border DockPanel.Dock="Bottom" Height="38" Background="#E2EDF2">
+        <Border DockPanel.Dock="Bottom" Height="38" Background="#E7F0F4">
             <TextBlock x:Name="StatusLabel" VerticalAlignment="Center" Margin="20,0" Foreground="#31596B" Text="جاهز للعمل — جميع العمليات تحفظ في قاعدة البيانات المركزية."/>
         </Border>
-        <TabControl x:Name="ModulesTabs" Margin="16" BorderBrush="#C8DCE4" Background="White">
+        <TabControl x:Name="ModulesTabs" Margin="18" BorderBrush="{StaticResource MedicalLine}" Background="White" Padding="4">
             <TabItem x:Name="DashboardTab" Header="الرئيسية">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="25">
@@ -37,20 +37,20 @@
                             <Button Content="حفظ CSV" Click="ExportCsv_Click" Background="#367B62"/>
                             <Button Content="طباعة / PDF" Click="PrintReport_Click" Background="#64768B"/>
                         </StackPanel>
-                        <UniformGrid Columns="2" Rows="2">
-                            <Border Margin="7" Padding="22" Background="#E9F6F9" CornerRadius="12">
+                        <UniformGrid Columns="4" Rows="1">
+                            <Border Style="{StaticResource MedicalMetricCard}" Background="#E9F6F9" BorderBrush="#D0E8EE">
                                 <StackPanel><TextBlock Text="قيمة الفواتير الصادرة" Foreground="#396678"/>
                                     <TextBlock x:Name="InvoicedLabel" Text="—" FontSize="28" FontWeight="Bold" Foreground="#0B5A72" Margin="0,5"/></StackPanel>
                             </Border>
-                            <Border Margin="7" Padding="22" Background="#ECF8F1" CornerRadius="12">
+                            <Border Style="{StaticResource MedicalMetricCard}" Background="#ECF8F1" BorderBrush="#D3EBDF">
                                 <StackPanel><TextBlock Text="المقبوضات النقدية" Foreground="#396678"/>
                                     <TextBlock x:Name="ReceivedLabel" Text="—" FontSize="28" FontWeight="Bold" Foreground="#176347" Margin="0,5"/></StackPanel>
                             </Border>
-                            <Border Margin="7" Padding="22" Background="#FFF3EC" CornerRadius="12">
+                            <Border Style="{StaticResource MedicalMetricCard}" Background="#FFF3EC" BorderBrush="#F1DDCB">
                                 <StackPanel><TextBlock Text="المصروفات النقدية" Foreground="#396678"/>
                                     <TextBlock x:Name="SpentLabel" Text="—" FontSize="28" FontWeight="Bold" Foreground="#B16526" Margin="0,5"/></StackPanel>
                             </Border>
-                            <Border Margin="7" Padding="22" Background="#EEF1FB" CornerRadius="12">
+                            <Border Style="{StaticResource MedicalMetricCard}" Background="#EEF1FB" BorderBrush="#DBE2F2">
                                 <StackPanel><TextBlock Text="صافي الحركة النقدية" Foreground="#396678"/>
                                     <TextBlock x:Name="NetLabel" Text="—" FontSize="28" FontWeight="Bold" Foreground="#324E8E" Margin="0,5"/></StackPanel>
                             </Border>
