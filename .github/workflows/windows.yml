@@ -45,6 +45,9 @@ jobs:
       - name: Create x86/x64 Portable and Installer
         shell: pwsh
         run: ./scripts/build-release.ps1
+      - name: Validate real Windows startup (x86 and x64 Portable + Installer)
+        shell: pwsh
+        run: ./scripts/test-windows-startup.ps1
       - name: Upload x86 Portable
         uses: actions/upload-artifact@v4
         with:

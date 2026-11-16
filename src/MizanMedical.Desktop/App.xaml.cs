@@ -36,7 +36,6 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
-        CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.GetCultureInfo("en-US");
 
         if (e.Args.Contains("--startup-smoke", StringComparer.OrdinalIgnoreCase))
         {
