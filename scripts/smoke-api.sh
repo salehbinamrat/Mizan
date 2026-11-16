@@ -131,6 +131,16 @@ TOKEN="$TOKEN_CASHIER"
 close=$(post shifts/close "$(jq -n --arg s "$SHIFT" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
 assert_eq "$(jq -r .expectedCash <<< "$close")" 140
 assert_eq "$(jq -r .variance <<< "$close")" 0
+# Carry forward exactly the last counted balance; no unexplained opening cash.
+assert_eq "$(status "$TOKEN_CASHIER" POST shifts/open "$(jq -n --arg d "$DESK" '{cashDeskId:$d,openingCash:141}')")" 400
+assert_eq "$(get shifts/open | jq 'length')" 0
+carried=$(post shifts/open "$(jq -n --arg d "$DESK" '{cashDeskId:$d,openingCash:140}')")
+NEW_SHIFT=$(jq -r .id <<< "$carried")
+assert_eq "$(jq -r .openingCash <<< "$carried")" 140
+assert_eq "$(status "$TOKEN_CASHIER" POST shifts/open "$(jq -n --arg d "$DESK" '{cashDeskId:$d,openingCash:140}')")" 400
+assert_eq "$(get shifts/open | jq 'length')" 1
+closeCarried=$(post shifts/close "$(jq -n --arg s "$NEW_SHIFT" '{shiftId:$s,countedCash:140,comment:"مطابق"}')")
+assert_eq "$(jq -r .expectedCash <<< "$closeCarried")" 140
 # Password change is self-service for each logged-in account, including original owner.
 # It invalidates all existing sessions and requires re-authentication.
 NEW_CASHIER_PASS='cashier-new-password-2026!'
