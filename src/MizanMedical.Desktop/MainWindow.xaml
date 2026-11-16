@@ -64,7 +64,7 @@
                 </ScrollViewer>
             </TabItem>
             <TabItem x:Name="PatientsTab" Header="المرضى">
-                <Grid Margin="19"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                <Grid Margin="19"><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <TextBlock Text="سجل المرضى الأساسي" FontSize="22" FontWeight="Bold" Foreground="#173F53" Margin="0,0,0,15"/>
                     <StackPanel x:Name="PatientForm" Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
                         <TextBlock Text="رقم الملف" VerticalAlignment="Center"/>
@@ -73,7 +73,14 @@
                         <TextBox x:Name="PatientNameBox" Width="255"/>
                         <Button Content="إضافة مريض" Click="AddPatient_Click"/>
                     </StackPanel>
-                    <DataGrid x:Name="PatientsGrid" Grid.Row="2" AutoGeneratingColumn="Grid_AutoGeneratingColumn"/>
+                    <WrapPanel Grid.Row="2" Margin="0,0,0,10" VerticalAlignment="Center">
+                        <TextBox x:Name="PatientListSearchBox" Width="265" ToolTip="ابحث باسم المريض أو رقم الملف"/>
+                        <Button Content="بحث" Click="SearchPatients_Click" Width="90"/>
+                        <Button Content="السابق" Click="PrevPatients_Click" Width="90"/>
+                        <TextBlock x:Name="PatientPageLabel" Text="صفحة 1" VerticalAlignment="Center" Margin="12,0"/>
+                        <Button Content="التالي" Click="NextPatients_Click" Width="90"/>
+                    </WrapPanel>
+                    <DataGrid x:Name="PatientsGrid" Grid.Row="3" AutoGeneratingColumn="Grid_AutoGeneratingColumn"/>
                 </Grid>
             </TabItem>
             <TabItem x:Name="ServicesTab" Header="الخدمات والأسعار">
@@ -96,12 +103,14 @@
                 <Grid Margin="19">
                     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
                     <TextBlock Text="إصدار فاتورة خدمات طبية" FontSize="22" FontWeight="Bold" Foreground="#173F53" Margin="0,0,0,12"/>
-                    <StackPanel x:Name="InvoiceForm" Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,10">
+                    <WrapPanel x:Name="InvoiceForm" Grid.Row="1" Margin="0,0,0,10">
                         <TextBlock Text="المريض" VerticalAlignment="Center"/>
-                        <ComboBox x:Name="InvoicePatientCombo" Width="380" DisplayMemberPath="Display" SelectedValuePath="Id"/>
+                        <TextBox x:Name="InvoicePatientSearchBox" Width="180" ToolTip="اكتب رقم ملف المريض أو اسمه"/>
+                        <Button Content="بحث عن مريض" Click="SearchInvoicePatients_Click" Width="125"/>
+                        <ComboBox x:Name="InvoicePatientCombo" Width="245" DisplayMemberPath="Display" SelectedValuePath="Id"/>
                         <TextBlock Text="الخدمة" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                        <ComboBox x:Name="InvoiceServiceCombo" Width="335" DisplayMemberPath="Display" SelectedValuePath="Id"/>
-                    </StackPanel>
+                        <ComboBox x:Name="InvoiceServiceCombo" Width="270" DisplayMemberPath="Display" SelectedValuePath="Id"/>
+                    </WrapPanel>
                     <StackPanel x:Name="InvoiceLineForm" Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,8">
                         <TextBlock Text="الكمية" VerticalAlignment="Center"/>
                         <TextBox x:Name="InvoiceQtyBox" Width="90" Text="1" FlowDirection="LeftToRight"/>
@@ -110,8 +119,17 @@
                         <Button Content="إصدار الفاتورة" Click="CreateInvoice_Click" Background="#1B755D"/>
                     </StackPanel>
                     <DataGrid x:Name="DraftLinesGrid" Grid.Row="3" Height="135" AutoGenerateColumns="True" AutoGeneratingColumn="Grid_AutoGeneratingColumn"/>
-                    <GroupBox x:Name="InvoiceListGroup" Header="أحدث الفواتير" Grid.Row="4" Margin="0,12,0,0" FontWeight="SemiBold">
-                        <DataGrid x:Name="InvoicesGrid" AutoGeneratingColumn="Grid_AutoGeneratingColumn"/>
+                    <GroupBox x:Name="InvoiceListGroup" Header="الفواتير مع البحث والتصفح" Grid.Row="4" Margin="0,12,0,0" FontWeight="SemiBold">
+                        <Grid><Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                            <WrapPanel Grid.Row="0" Margin="8,6,8,12">
+                                <TextBox x:Name="InvoiceListSearchBox" Width="255" ToolTip="رقم الفاتورة أو ملف أو اسم المريض"/>
+                                <Button Content="بحث" Click="SearchInvoices_Click" Width="85"/>
+                                <Button Content="السابق" Click="PrevInvoices_Click" Width="90"/>
+                                <TextBlock x:Name="InvoicePageLabel" Text="صفحة 1" Margin="12,0" VerticalAlignment="Center"/>
+                                <Button Content="التالي" Click="NextInvoices_Click" Width="90"/>
+                            </WrapPanel>
+                            <DataGrid x:Name="InvoicesGrid" Grid.Row="1" AutoGeneratingColumn="Grid_AutoGeneratingColumn"/>
+                        </Grid>
                     </GroupBox>
                 </Grid>
             </TabItem>
@@ -151,6 +169,10 @@
                 <StackPanel Margin="25">
                     <TextBlock Text="تحصيل دفعة على فاتورة" FontSize="22" FontWeight="Bold" Foreground="#173F53" Margin="0,0,0,20"/>
                     <TextBlock Text="اختر الفاتورة"/>
+                    <WrapPanel Margin="0,0,0,8">
+                        <TextBox x:Name="ReceiptInvoiceSearchBox" Width="320" ToolTip="رقم الفاتورة أو ملف المريض"/>
+                        <Button Content="بحث عن فاتورة مستحقة" Click="SearchReceiptInvoices_Click" Width="205"/>
+                    </WrapPanel>
                     <ComboBox x:Name="ReceiptInvoiceCombo" Width="560" HorizontalAlignment="Right" DisplayMemberPath="Display" SelectedValuePath="Id"/>
                     <TextBlock Text="المناوبة المفتوحة لحسابك" Margin="0,15,0,0"/>
                     <ComboBox x:Name="ReceiptShiftCombo" Width="380" HorizontalAlignment="Right" DisplayMemberPath="Display" SelectedValuePath="Id"/>

@@ -102,6 +102,15 @@ assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $
 assert_eq "$(get reports/daily | jq -r .invoicedAmount)" 80
 TOKEN="$TOKEN_OWNER"
 assert_eq "$(get patients | jq 'length')" 2
+# Search/pagination must find old patients and invoices without exposing another department.
+firstPatient=$(get "patients?page=1&pageSize=1" | jq -r '.[0].id')
+secondPatient=$(get "patients?page=2&pageSize=1" | jq -r '.[0].id')
+[[ "$firstPatient" != "$secondPatient" ]] || { echo 'Patient pagination repeated the same row'; exit 1; }
+assert_eq "$(get "patients?page=1&pageSize=1" | jq 'length')" 1
+assert_eq "$(get "patients?search=F-$seed&pageSize=1" | jq 'length')" 1
+assert_eq "$(get "invoices?page=2&pageSize=1" | jq 'length')" 1
+assert_eq "$(get "invoices?search=$(jq -r '.invoiceNumber' <<< "$invoiceB")" | jq 'length')" 1
+assert_eq "$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $TOKEN" "$BASE/api/patients?page=0")" 400
 assert_eq "$(get reports/daily | jq -r .invoicedAmount)" 179
 # General manager can view ALL departments only with explicitly assigned view grants.
 generalName="general$RANDOM$RANDOM"
