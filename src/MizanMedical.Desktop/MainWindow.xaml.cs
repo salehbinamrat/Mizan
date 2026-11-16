@@ -14,6 +14,7 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<InvoiceLineChoice> _draftLines = [];
     private bool _busy;
+    private bool _landingSelected;
     // Reuse the same request ID if the server commits but the network response is lost.
     private Guid _pendingInvoiceId = Guid.NewGuid();
     private Guid _pendingReceiptId = Guid.NewGuid();
@@ -35,6 +36,7 @@ public partial class MainWindow : Window
     private void ApplyAccountPermissions()
     {
         var user = App.Api.Staff ?? throw new InvalidOperationException("يجب تسجيل الدخول أولا.");
+        var previousTab = ModulesTabs.SelectedItem as TabItem;
         var authorized = LoginNavigationRules.VisibleModules(user.IsSystemOwner, user.Permissions).ToHashSet();
         UserLabel.Text = $"{user.FullName} — {LoginNavigationRules.ArabicRole(user.Role, user.IsSystemOwner)}";
 
@@ -59,7 +61,7 @@ public partial class MainWindow : Window
         BackupGroup.Visibility = user.IsSystemOwner ? Visibility.Visible : Visibility.Collapsed;
 
         DesktopModule? first = LoginNavigationRules.LandingModule(user.Role, user.IsSystemOwner, user.Permissions);
-        ModulesTabs.SelectedItem = first switch
+        var landingTab = first switch
         {
             DesktopModule.Dashboard => DashboardTab,
             DesktopModule.Patients => PatientsTab,
@@ -71,6 +73,10 @@ public partial class MainWindow : Window
             DesktopModule.Administration => AdminTab,
             _ => null
         };
+        // Keep the user's current workspace on refresh unless its permission was revoked.
+        if (!_landingSelected || previousTab?.Visibility != Visibility.Visible)
+            ModulesTabs.SelectedItem = landingTab;
+        _landingSelected = true;
     }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e) => await Perform(RefreshAll);
