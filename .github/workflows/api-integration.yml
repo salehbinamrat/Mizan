@@ -34,6 +34,8 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Build API
         run: dotnet build src/MizanMedical.Api/MizanMedical.Api.csproj --configuration Release
+      - name: Build encrypted-backup restore tool
+        run: dotnet build src/MizanMedical.RestoreTool/MizanMedical.RestoreTool.csproj --configuration Release
       - name: Execute API and PostgreSQL workflow
         shell: bash
         env:
@@ -44,6 +46,19 @@ jobs:
           MIZAN_TEST_ADMIN_USERNAME: testadmin
           MIZAN_TEST_ADMIN_PASSWORD: ci-test-password-12345!
         run: |
+          # PostgreSQL 17 client tools run from the same tested postgres:17 image
+          # as the CI service. No plaintext pg_dump data is ever written to disk.
+          mkdir -p "$RUNNER_TEMP/mizan-pg-bin"
+          cat > "$RUNNER_TEMP/mizan-pg-bin/pg_dump" <<'PGDUMP'
+          #!/usr/bin/env bash
+          exec docker run --rm -i --network host --env PGPASSWORD postgres:17 pg_dump "$@"
+          PGDUMP
+          cat > "$RUNNER_TEMP/mizan-pg-bin/pg_restore" <<'PGRESTORE'
+          #!/usr/bin/env bash
+          exec docker run --rm -i --network host --env PGPASSWORD --env PGHOST --env PGPORT --env PGUSER postgres:17 pg_restore "$@"
+          PGRESTORE
+          chmod +x "$RUNNER_TEMP/mizan-pg-bin/pg_dump" "$RUNNER_TEMP/mizan-pg-bin/pg_restore"
+          export PATH="$RUNNER_TEMP/mizan-pg-bin:$PATH"
           dotnet run --project src/MizanMedical.Api/MizanMedical.Api.csproj -c Release --no-build --no-launch-profile > /tmp/mizan-api.log 2>&1 &
           pid=$!
           trap 'kill "$pid" 2>/dev/null || true; cat /tmp/mizan-api.log' EXIT
@@ -54,3 +69,4 @@ jobs:
           done
           if [ "$ready" != "1" ]; then echo 'API failed to start'; exit 1; fi
           bash scripts/smoke-api.sh
+          bash scripts/ci-encrypted-restore.sh

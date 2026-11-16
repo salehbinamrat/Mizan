@@ -2,5 +2,6 @@
   <Project Path="src/MizanMedical.Domain/MizanMedical.Domain.csproj" />
   <Project Path="src/MizanMedical.Api/MizanMedical.Api.csproj" />
   <Project Path="src/MizanMedical.Desktop/MizanMedical.Desktop.csproj" />
+  <Project Path="src/MizanMedical.RestoreTool/MizanMedical.RestoreTool.csproj" />
   <Project Path="tests/MizanMedical.Tests/MizanMedical.Tests.csproj" />
 </Solution>
