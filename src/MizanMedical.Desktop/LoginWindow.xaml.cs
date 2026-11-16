@@ -9,7 +9,51 @@ public partial class LoginWindow : Window
 {
     public LoginWindow() => InitializeComponent();
 
-    private void Window_Loaded(object sender, RoutedEventArgs e) => UsernameBox.Focus();
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
+    {
+        UsernameBox.Focus();
+        try
+        {
+            var state = await App.Api.InitialSetupStatus();
+            if (state.Required)
+            {
+                LoginButton.IsEnabled = false;
+                if (state.CanInitialize && App.Api.IsLocalServer)
+                {
+                    FirstSetupButton.Visibility = Visibility.Visible;
+                    StatusText.Text = "هذه قاعدة جديدة. أنشئ حساب مسؤول البرنامج الأول باستخدام رمز التهيئة المعروض على جهاز الخادم.";
+                }
+                else
+                    StatusText.Text = "لم يكتمل إعداد مسؤول البرنامج. يرجى تشغيل معالج التهيئة من جهاز الخادم نفسه.";
+            }
+        }
+        catch (HttpRequestException)
+        {
+            // The login action will display connectivity errors when requested.
+        }
+        catch (Exception)
+        {
+            // Older servers without this endpoint still support normal login.
+        }
+    }
+
+    private async void FirstSetup_Click(object sender, RoutedEventArgs e)
+    {
+        FirstSetupButton.IsEnabled = false;
+        try
+        {
+            var wizard = new FirstRunWindow { Owner = this };
+            if (wizard.ShowDialog() == true)
+            {
+                FirstSetupButton.Visibility = Visibility.Collapsed;
+                UsernameBox.Text = wizard.CreatedUsername;
+                LoginButton.IsEnabled = true;
+                StatusText.Text = "تم إنشاء حساب المسؤول الرئيسي. سجل الدخول باستخدام كلمة المرور التي حددتها.";
+                PasswordBox.Focus();
+            }
+        }
+        finally { FirstSetupButton.IsEnabled = true; }
+    }
 
     private void Window_KeyDown(object sender, KeyEventArgs e)
     {

@@ -13,6 +13,7 @@ public sealed class HospitalApi
     private readonly HttpClient _http;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     public LoginUser? Staff { get; private set; }
+    public bool IsLocalServer => _http.BaseAddress?.IsLoopback == true;
 
     public HospitalApi()
     {
@@ -96,6 +97,16 @@ public sealed class HospitalApi
         }
     }
 
+    public Task<InitialSetupStatusDto> InitialSetupStatus() =>
+        Get<InitialSetupStatusDto>("api/initial-setup/status");
+
+    public Task<IdResult> InitializeOwner(string code, string fullName, string username, string password, string confirmation) =>
+        Post<IdResult>("api/initial-setup/complete", new
+        {
+            SetupCode = code, FullName = fullName, Username = username,
+            Password = password, ConfirmPassword = confirmation
+        });
+
     public Task<List<DepartmentDto>> Departments() => Get<List<DepartmentDto>>("api/departments");
     public Task<List<StaffUserDto>> Users() => Get<List<StaffUserDto>>("api/users");
     public Task<List<string>> PermissionCatalog() => Get<List<string>>("api/permissions/catalog");
@@ -154,6 +165,7 @@ public sealed class HospitalApi
     private sealed record LoginResult(string Token, LoginUser User);
 }
 
+public sealed record InitialSetupStatusDto(bool Required, bool CanInitialize);
 public sealed record LoginUser(Guid Id, string Username, string FullName, string Role,
     Guid? DepartmentId, bool AllDepartments, bool IsSystemOwner, List<string> Permissions);
 public sealed record DepartmentDto(Guid Id, string Code, string Name, int MaxActiveUsers);
